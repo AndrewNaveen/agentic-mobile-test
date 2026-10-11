@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "id": "settings.about_device",
+      "screen": "settings.home",
+      "locators": [
+        {
+          "strategy": "-android uiautomator",
+          "value": "new UiSelector().textMatches(\"^About (phone|emulated device)$\")",
+          "description": "Stable text pattern across physical devices and Android emulators"
+        },
+        {
+          "strategy": "accessibility id",
+          "value": "About phone",
+          "description": "Fallback for builds exposing the row through content-desc"
+        }
+      ]
+    },
+    {
+      "id": "settings.device_name",
+      "screen": "settings.about_device",
+      "locators": [
+        {
+          "strategy": "-android uiautomator",
+          "value": "new UiSelector().text(\"Device name\")",
+          "description": "Visible heading that independently proves the destination page"
+        },
+        {
+          "strategy": "accessibility id",
+          "value": "Device name",
+          "description": "Fallback for builds exposing the heading through content-desc"
+        }
+      ]
+    }
+  ]
+}

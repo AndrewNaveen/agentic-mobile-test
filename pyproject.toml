@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-mobile-test"
+version = "0.1.0"
+description = "A bounded agentic mobile test loop with independent verification"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0,<10.0"]
+appium = [
+    "Appium-Python-Client==6.0.7",
+    "selenium==4.49.0",
+]
+gemini = ["google-genai==2.22.0"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests/autotests/ui"]
+markers = [
+    "appium: requires an Android app, connected device, and Appium configuration",
+    "gemini: makes an explicitly enabled paid Gemini API request",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_mobile_test"]

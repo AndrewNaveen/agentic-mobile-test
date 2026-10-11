@@ -1,0 +1,15 @@
+{
+  "name": "agentic-mobile-test-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project-local Appium server tooling",
+  "scripts": {
+    "appium:setup": "./scripts/appium.sh driver install --source=npm appium-uiautomator2-driver@8.7.0",
+    "appium:drivers": "./scripts/appium.sh driver list --installed",
+    "appium:doctor": "./scripts/appium.sh driver doctor uiautomator2",
+    "appium:start": "./scripts/appium.sh --address 127.0.0.1 --port 4723 --session-override"
+  },
+  "devDependencies": {
+    "appium": "3.7.0"
+  }
+}
