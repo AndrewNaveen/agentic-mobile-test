@@ -13,10 +13,10 @@ from agentic_mobile_test.contracts import (
     Observation,
     ObservedElement,
     Scenario,
-    VisibleTextAssertion,
+    TextAssertion,
 )
 from agentic_mobile_test.gateways import GeminiBudget, GeminiGateway
-from agentic_mobile_test.planner import PlannerContext, StructuredPlanner
+from agentic_mobile_test.agent.planner import PlannerContext, StructuredPlanner
 
 _ONE_PIXEL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUB"
@@ -41,7 +41,7 @@ def test_gemini_returns_one_structured_bounded_action(tmp_path: Path) -> None:
     scenario = Scenario(
         scenario_id="gemini-connection-check",
         goal="Tap the visible About phone element",
-        assertions=(VisibleTextAssertion("destination", "Device name"),),
+        assertions=(TextAssertion("destination", "Device name"),),
         allowed_actions=frozenset({ActionKind.TAP}),
         max_steps=1,
     )

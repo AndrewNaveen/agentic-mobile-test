@@ -149,6 +149,14 @@ class TargetCatalog:
                 f"Unknown semantic target {target_id!r} in {self.source}"
             ) from error
 
+    def matching_ids(self, locator: Locator) -> tuple[str, ...]:
+        """Return durable targets that explicitly contain this reviewed locator."""
+        return tuple(
+            target_id
+            for target_id, target in self._targets.items()
+            if any(candidate.locator == locator for candidate in target.locators)
+        )
+
 
 @dataclass(frozen=True)
 class LocatorAttempt:

@@ -20,6 +20,45 @@ class DeviceOperationResult:
     details: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class DeviceConnectivity:
+    """Observable Android radio state, independent of Appium's bitmask API."""
+
+    wifi_enabled: bool
+    mobile_data_enabled: bool
+    airplane_mode_enabled: bool
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(value, bool)
+            for value in (
+                self.wifi_enabled,
+                self.mobile_data_enabled,
+                self.airplane_mode_enabled,
+            )
+        ):
+            raise ValueError("Connectivity state values must be booleans")
+
+    @classmethod
+    def from_appium_mask(cls, value: int) -> DeviceConnectivity:
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError("Appium network connection state must be a non-negative integer")
+        if value & ~0b111:
+            raise ValueError(f"Unsupported Appium network state bits: {value:#b}")
+        return cls(
+            wifi_enabled=bool(value & 0b010),
+            mobile_data_enabled=bool(value & 0b100),
+            airplane_mode_enabled=bool(value & 0b001),
+        )
+
+    def to_appium_mask(self) -> int:
+        return (
+            (0b010 if self.wifi_enabled else 0)
+            | (0b100 if self.mobile_data_enabled else 0)
+            | (0b001 if self.airplane_mode_enabled else 0)
+        )
+
+
 class DeviceOperationError(RuntimeError):
     """A platform operation failed with optional local evidence."""
 
@@ -45,6 +84,26 @@ class PlatformDeviceAdapter(Protocol):
         *,
         timeout_seconds: float = 10.0,
     ) -> DeviceOperationResult: ...
+
+    def is_app_installed(self, app_id: str) -> bool: ...
+
+    def launch_app(
+        self,
+        app_id: str,
+        *,
+        timeout_seconds: float = 10.0,
+    ) -> DeviceOperationResult: ...
+
+    def get_connectivity(self) -> DeviceConnectivity: ...
+
+    def set_connectivity(
+        self,
+        state: DeviceConnectivity,
+    ) -> DeviceOperationResult: ...
+
+
+class AppNotInstalledError(DeviceOperationError):
+    """The requested app is not installed on the connected device."""
 
 
 class AndroidDeviceAdapter:
@@ -107,6 +166,113 @@ class AndroidDeviceAdapter:
             },
         )
 
+    def is_app_installed(self, app_id: str) -> bool:
+        app_id = _validate_app_id(app_id)
+        try:
+            return bool(self.actions.driver.is_app_installed(app_id))
+        except Exception as error:
+            evidence = _capture_failure(self.actions, "check-app-installed")
+            raise DeviceOperationError(
+                "check-app-installed",
+                f"{type(error).__name__}: {error}",
+                evidence=evidence,
+            ) from error
+
+    def launch_app(
+        self,
+        app_id: str,
+        *,
+        timeout_seconds: float = 10.0,
+    ) -> DeviceOperationResult:
+        app_id = _validate_app_id(app_id)
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+        started = monotonic()
+        if not self.is_app_installed(app_id):
+            raise AppNotInstalledError(
+                "launch-app",
+                f"application {app_id!r} is not installed",
+                evidence=_capture_failure(self.actions, "app-not-installed"),
+            )
+        try:
+            response = self.actions.driver.execute_script(
+                "mobile: startActivity",
+                {
+                    "wait": True,
+                    "action": "android.intent.action.MAIN",
+                    "package": app_id,
+                    "categories": ["android.intent.category.LAUNCHER"],
+                    "flags": "0x10200000",
+                },
+            )
+            WebDriverWait(
+                self.actions.driver,
+                timeout_seconds,
+                poll_frequency=self.actions.poll_seconds,
+            ).until(lambda driver: _app_is_foreground(driver, app_id))
+        except Exception as error:
+            evidence = _capture_failure(self.actions, "launch-app")
+            raise DeviceOperationError(
+                "launch-app",
+                f"{type(error).__name__}: {error}",
+                evidence=evidence,
+            ) from error
+        return DeviceOperationResult(
+            operation="launch-app",
+            elapsed_seconds=monotonic() - started,
+            details={
+                "platform": self.profile.platform.value,
+                "app_id": app_id,
+                "current_package": getattr(self.actions.driver, "current_package", None),
+                "response": response,
+            },
+        )
+
+    def get_connectivity(self) -> DeviceConnectivity:
+        try:
+            return DeviceConnectivity.from_appium_mask(
+                self.actions.driver.network_connection
+            )
+        except Exception as error:
+            evidence = _capture_failure(self.actions, "read-connectivity")
+            raise DeviceOperationError(
+                "read-connectivity",
+                f"{type(error).__name__}: {error}",
+                evidence=evidence,
+            ) from error
+
+    def set_connectivity(
+        self,
+        state: DeviceConnectivity,
+    ) -> DeviceOperationResult:
+        if not isinstance(state, DeviceConnectivity):
+            raise TypeError("state must be a DeviceConnectivity")
+        started = monotonic()
+        try:
+            self.actions.driver.set_network_connection(state.to_appium_mask())
+            actual = self.get_connectivity()
+            if actual != state:
+                raise RuntimeError(f"requested {state!r}, observed {actual!r}")
+        except Exception as error:
+            evidence = _capture_failure(self.actions, "set-connectivity")
+            raise DeviceOperationError(
+                "set-connectivity",
+                f"{type(error).__name__}: {error}",
+                evidence=evidence,
+            ) from error
+        return DeviceOperationResult(
+            operation="set-connectivity",
+            elapsed_seconds=monotonic() - started,
+            details={
+                "platform": self.profile.platform.value,
+                "connectivity": {
+                    "wifi_enabled": actual.wifi_enabled,
+                    "mobile_data_enabled": actual.mobile_data_enabled,
+                    "airplane_mode_enabled": actual.airplane_mode_enabled,
+                },
+            },
+        )
+
 
 class IOSDeviceAdapter:
     settings_app_id = "com.apple.Preferences"
@@ -155,6 +321,69 @@ class IOSDeviceAdapter:
             },
         )
 
+    def is_app_installed(self, app_id: str) -> bool:
+        app_id = _validate_app_id(app_id)
+        try:
+            return bool(self.actions.driver.is_app_installed(app_id))
+        except Exception as error:
+            evidence = _capture_failure(self.actions, "check-app-installed")
+            raise DeviceOperationError(
+                "check-app-installed",
+                f"{type(error).__name__}: {error}",
+                evidence=evidence,
+            ) from error
+
+    def launch_app(
+        self,
+        app_id: str,
+        *,
+        timeout_seconds: float = 10.0,
+    ) -> DeviceOperationResult:
+        app_id = _validate_app_id(app_id)
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+        started = monotonic()
+        if not self.is_app_installed(app_id):
+            raise AppNotInstalledError(
+                "launch-app",
+                f"application {app_id!r} is not installed",
+                evidence=_capture_failure(self.actions, "app-not-installed"),
+            )
+        try:
+            self.actions.driver.activate_app(app_id)
+            WebDriverWait(
+                self.actions.driver,
+                timeout_seconds,
+                poll_frequency=self.actions.poll_seconds,
+            ).until(lambda driver: _app_is_foreground(driver, app_id))
+        except Exception as error:
+            evidence = _capture_failure(self.actions, "launch-app")
+            raise DeviceOperationError(
+                "launch-app",
+                f"{type(error).__name__}: {error}",
+                evidence=evidence,
+            ) from error
+        return DeviceOperationResult(
+            operation="launch-app",
+            elapsed_seconds=monotonic() - started,
+            details={"platform": self.profile.platform.value, "app_id": app_id},
+        )
+
+    def get_connectivity(self) -> DeviceConnectivity:
+        raise DeviceOperationError(
+            "read-connectivity",
+            "network radio control is not supported by the iOS adapter",
+        )
+
+    def set_connectivity(
+        self,
+        state: DeviceConnectivity,
+    ) -> DeviceOperationResult:
+        raise DeviceOperationError(
+            "set-connectivity",
+            "network radio control is not supported by the iOS adapter",
+        )
+
 
 def create_platform_adapter(
     actions: AppiumActions,
@@ -173,6 +402,15 @@ def _app_is_foreground(driver: Any, app_id: str) -> bool:
         return int(state) == 4
     except (TypeError, ValueError):
         return str(state).strip().lower() in {"running_in_foreground", "foreground"}
+
+
+def _validate_app_id(app_id: str) -> str:
+    if not isinstance(app_id, str) or not app_id.strip():
+        raise ValueError("app_id must be a non-empty package or bundle identifier")
+    normalized = app_id.strip()
+    if any(character.isspace() for character in normalized):
+        raise ValueError("app_id cannot contain whitespace")
+    return normalized
 
 
 def _capture_failure(

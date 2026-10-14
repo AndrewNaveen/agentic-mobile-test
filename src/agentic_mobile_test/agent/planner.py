@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from .contracts import (
+from ..contracts import (
     ActionKind,
     Observation,
     PlannedAction,
@@ -28,7 +28,7 @@ class Planner(Protocol):
 
 
 class ModelGateway(Protocol):
-    """Provider adapter implemented later for the selected model API."""
+    """Provider boundary currently implemented by the opt-in Gemini gateway."""
 
     def choose_action(
         self,
@@ -52,7 +52,10 @@ class StructuredPlanner:
 
     SYSTEM_INSTRUCTION = (
         "Choose exactly one allowed action that advances the supplied mobile test goal. "
-        "Only target element references present in the observation. Never invent selectors, "
+        "Treat required_interactions as mandatory: continue navigating until each has "
+        "reached its minimum completed_count; do not stop merely because success text is visible. "
+        "Only target element references present in the observation and app references in "
+        "approved_apps. Never invent app IDs, selectors, "
         "coordinates, assertions, test data, retries, or expected results. Return one JSON "
         "object matching the documented action fields."
     )
@@ -71,25 +74,50 @@ class StructuredPlanner:
 
 def _planner_payload(context: PlannerContext) -> Mapping[str, Any]:
     return {
+        "scenario_type": context.scenario.scenario_type.value,
         "goal": context.scenario.goal,
-        "success_criteria": [assertion.text for assertion in context.scenario.assertions],
+        "preconditions": context.scenario.preconditions,
+        "success_criteria": [
+            {
+                "assertion_id": assertion.assertion_id,
+                "text": assertion.text,
+                "exact": assertion.exact,
+                "expectation": assertion.expectation.value,
+            }
+            for assertion in context.scenario.assertions
+        ],
+        "required_interactions": [
+            {
+                "action": interaction.action.value,
+                "target_text": interaction.target_text,
+                "minimum_count": interaction.minimum_count,
+                "completed_count": _interaction_count(
+                    context.history,
+                    interaction.action,
+                    interaction.target_text,
+                ),
+            }
+            for interaction in context.scenario.required_interactions
+        ],
         "allowed_actions": sorted(action.value for action in context.scenario.allowed_actions),
         "available_test_data": sorted(context.scenario.test_data),
+        "approved_apps": [
+            {"ref": ref, "app_id": app_id}
+            for ref, app_id in sorted(context.scenario.launchable_apps.items())
+        ],
         "remaining_steps": context.remaining_steps,
         "current_app": context.observation.app_package,
         "current_activity": context.observation.activity,
         "elements": [
             {
                 "ref": element.ref,
-                "label": element.label,
                 "text": element.text,
                 "accessibility_id": element.accessibility_id,
-                "resource_id": element.resource_id,
-                "class_name": element.class_name,
                 "clickable": element.clickable,
                 "enabled": element.enabled,
             }
             for element in context.observation.elements
+            if element.text or element.accessibility_id
         ],
         "recent_steps": [
             {
@@ -101,16 +129,32 @@ def _planner_payload(context: PlannerContext) -> Mapping[str, Any]:
         ],
         "action_schema": {
             "action": (
-                "tap | type_text | scroll_forward | scroll_backward | press_back; "
+                "tap | type_text | launch_app | scroll_forward | scroll_backward | press_back; "
                 "scroll_forward reveals later/lower content and scroll_backward reveals "
                 "earlier/upper content"
             ),
-            "target_ref": "required for tap/type_text",
-            "value_ref": "required for type_text; must name available_test_data",
+            "target_ref": "required for tap/type_text; null for launch_app",
+            "value_ref": (
+                "required for type_text (available_test_data) or launch_app "
+                "(approved_apps ref)"
+            ),
             "reason": "short explanation",
             "expected_effect": "observable effect expected after execution",
         },
     }
+
+
+def _interaction_count(history: tuple[StepRecord, ...], action: ActionKind, target_text: str) -> int:
+    expected = " ".join(target_text.casefold().split())
+    count = 0
+    for step in history:
+        if step.action.kind is not action or not step.action.target_ref:
+            continue
+        target = step.before.element(step.action.target_ref)
+        observed_text = target.text or target.label if target is not None else ""
+        if " ".join(observed_text.casefold().split()) == expected:
+            count += 1
+    return count
 
 
 def _parse_action(value: Mapping[str, Any]) -> PlannedAction:

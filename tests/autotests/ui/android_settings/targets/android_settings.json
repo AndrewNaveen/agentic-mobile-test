@@ -2,6 +2,28 @@
   "schema_version": 1,
   "targets": [
     {
+      "id": "settings.network_internet",
+      "screen": "settings.home",
+      "locators": [
+        {
+          "strategy": "-android uiautomator",
+          "value": "new UiSelector().text(\"Network & internet\")",
+          "description": "Settings network page entry"
+        }
+      ]
+    },
+    {
+      "id": "settings.airplane_mode",
+      "screen": "settings.network_internet",
+      "locators": [
+        {
+          "strategy": "-android uiautomator",
+          "value": "new UiSelector().text(\"Airplane mode\")",
+          "description": "Airplane mode control in Network & internet"
+        }
+      ]
+    },
+    {
       "id": "settings.about_device",
       "screen": "settings.home",
       "locators": [

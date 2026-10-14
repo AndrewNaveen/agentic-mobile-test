@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "scenario_id": "youtube-airplane-mode-offline",
+  "scenario_type": "edge",
+  "goal": "In Android Settings, turn on Airplane mode and launch YouTube. If YouTube's notification permission prompt appears, choose Don't allow. Verify YouTube reaches its offline screen.",
+  "preconditions": [
+    "Android Settings is open at its root screen.",
+    "The emulator has working mobile-data internet before the test; the test fixture enables mobile data and disables Wi-Fi and Airplane mode.",
+    "YouTube is installed on the device."
+  ],
+  "cleanup": [
+    "Restore the original Wi-Fi, mobile-data, and Airplane-mode state captured by the test."
+  ],
+  "assertions": [
+    {
+      "assertion_id": "offline-connect-prompt",
+      "text": "Connect to the internet",
+      "exact": false,
+      "expectation": "visible"
+    },
+    {
+      "assertion_id": "offline-status",
+      "text": "You're offline",
+      "exact": false,
+      "expectation": "visible"
+    },
+    {
+      "assertion_id": "offline-connection-hint",
+      "text": "Check your connection",
+      "exact": false,
+      "expectation": "visible"
+    }
+  ],
+  "allowed_actions": [
+    "tap",
+    "launch_app",
+    "scroll_forward"
+  ],
+  "required_interactions": [
+    {
+      "action": "tap",
+      "target_text": "Airplane mode",
+      "minimum_count": 1
+    }
+  ],
+  "test_data": {},
+  "launchable_apps": {
+    "youtube": "com.google.android.youtube"
+  },
+  "max_steps": 15
+}

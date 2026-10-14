@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scenario_id": "replace-with-kebab-case-id",
+  "scenario_type": "positive",
+  "goal": "Describe the user-visible behavior to explore.",
+  "preconditions": [
+    "State what must already be true before the test starts."
+  ],
+  "cleanup": [
+    "State what device or app state must be restored after the test."
+  ],
+  "assertions": [
+    {
+      "assertion_id": "expected-result",
+      "text": "Replace with an observable expected result",
+      "exact": true,
+      "expectation": "visible"
+    }
+  ],
+  "allowed_actions": [
+    "tap",
+    "scroll_forward"
+  ],
+  "required_interactions": [],
+  "test_data": {},
+  "launchable_apps": {},
+  "max_steps": 8
+}

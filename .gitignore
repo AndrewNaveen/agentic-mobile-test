@@ -15,7 +15,6 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 
-.artemis/
 .appium-home/
 node_modules/
 npm-debug.log*

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from ..planner import ModelGatewayUnavailableError, PlannerResponseError
+from ..agent.planner import ModelGatewayUnavailableError, PlannerResponseError
 
 _ACTION_SCHEMA: Mapping[str, Any] = {
     "type": "object",
@@ -27,6 +27,7 @@ _ACTION_SCHEMA: Mapping[str, Any] = {
             "enum": [
                 "tap",
                 "type_text",
+                "launch_app",
                 "scroll_forward",
                 "scroll_backward",
                 "press_back",

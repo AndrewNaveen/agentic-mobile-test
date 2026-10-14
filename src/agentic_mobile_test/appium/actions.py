@@ -35,11 +35,19 @@ from .models import (
     SliderValueUnavailableError,
 )
 
-ElementState = Literal["present", "visible", "clickable"]
+ElementState = Literal["present", "visible", "enabled", "clickable"]
 SwipeDirection = Literal["up", "down", "left", "right"]
 _SAFE_LABEL = re.compile(r"[^a-zA-Z0-9_.-]+")
 _PERCENT_VALUE = re.compile(r"(-?\d+(?:\.\d+)?)\s*(?:%|percent\b)", re.IGNORECASE)
 _PLAIN_NUMBER = re.compile(r"\s*(-?\d+(?:\.\d+)?)\s*")
+
+
+def _element_to_be_enabled(locator: Locator) -> Callable[[Any], Any]:
+    def predicate(driver: Any) -> Any:
+        element = driver.find_element(*locator)
+        return element if element.is_enabled() else False
+
+    return predicate
 
 
 class AppiumActions:
@@ -86,11 +94,63 @@ class AppiumActions:
         conditions = {
             "present": expected.presence_of_element_located,
             "visible": expected.visibility_of_element_located,
+            "enabled": _element_to_be_enabled,
             "clickable": expected.element_to_be_clickable,
         }
         if state not in conditions:
             raise ValueError(f"Unsupported element state: {state}")
         return self._wait(timeout_seconds).until(conditions[state](locator))
+
+    def wait_until(
+        self,
+        locator: Locator,
+        *,
+        state: ElementState = "visible",
+        timeout_seconds: float | None = None,
+    ) -> bool:
+        """Return whether a locator reaches a UI state within a bounded timeout.
+
+        This mirrors the useful ``BasePage.wait_until_*`` contract while keeping
+        polling and timeout behavior in the shared Appium action layer.
+        """
+
+        try:
+            self.find(locator, state=state, timeout_seconds=timeout_seconds)
+        except TimeoutException:
+            return False
+        return True
+
+    def wait_until_present(
+        self,
+        locator: Locator,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> bool:
+        return self.wait_until(locator, state="present", timeout_seconds=timeout_seconds)
+
+    def wait_until_visible(
+        self,
+        locator: Locator,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> bool:
+        return self.wait_until(locator, state="visible", timeout_seconds=timeout_seconds)
+
+    def wait_until_clickable(
+        self,
+        locator: Locator,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> bool:
+        return self.wait_until(locator, state="clickable", timeout_seconds=timeout_seconds)
+
+    def wait_until_enabled(
+        self,
+        locator: Locator,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> bool:
+        return self.wait_until(locator, state="enabled", timeout_seconds=timeout_seconds)
 
     def wait_until_gone(
         self,

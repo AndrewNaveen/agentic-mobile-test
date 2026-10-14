@@ -14,7 +14,10 @@ from agentic_mobile_test.gateways import (
     GeminiModelResponse,
     GeminiTokenUsage,
 )
-from agentic_mobile_test.planner import ModelGatewayUnavailableError, PlannerResponseError
+from agentic_mobile_test.agent.planner import (
+    ModelGatewayUnavailableError,
+    PlannerResponseError,
+)
 
 
 def test_gateway_sends_strict_bounded_request(tmp_path: Path) -> None:

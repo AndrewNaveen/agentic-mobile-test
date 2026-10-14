@@ -8,6 +8,9 @@ import json
 from typing import Any
 from xml.etree import ElementTree
 
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+
 from ..contracts import Observation, ObservedElement
 from .actions import AppiumActions
 
@@ -82,6 +85,35 @@ class AppiumObserver:
             activity=activity,
         )
 
+    def wait_for_clickable_text(
+        self,
+        text: str,
+        *,
+        timeout_seconds: float = 10.0,
+    ) -> Observation:
+        """Wait a bounded time for a visible UI label to become actionable."""
+
+        if not text.strip():
+            raise ValueError("text must be non-empty")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+        expected = _normalize(text)
+        try:
+            WebDriverWait(
+                self.actions.driver,
+                timeout_seconds,
+                poll_frequency=self.actions.poll_seconds,
+            ).until(
+                lambda driver: _has_enabled_clickable_text(driver.page_source, expected)
+            )
+        except TimeoutException as error:
+            _capture_timeout(self.actions, text)
+            raise ObservationError(
+                f"UI target {text!r} did not become enabled and clickable "
+                f"within {timeout_seconds:g} seconds"
+            ) from error
+        return self.observe()
+
 
 def _safe_locator(
     *,
@@ -153,6 +185,43 @@ def _nodes_with_clickable_ancestor(root: ElementTree.Element) -> set[int]:
 
     visit(root, False)
     return clickable_nodes
+
+
+def _has_enabled_clickable_text(source: str, expected: str) -> bool:
+    try:
+        root = ElementTree.fromstring(source)
+    except ElementTree.ParseError:
+        return False
+    for node in root.iter():
+        if _normalize(_attribute(node, "text")) != expected:
+            continue
+        if _boolean_attribute(node, "enabled") and _boolean_attribute(node, "clickable"):
+            return True
+        parent_clickable = _has_clickable_ancestor(node, root)
+        if _boolean_attribute(node, "enabled") and parent_clickable:
+            return True
+    return False
+
+
+def _has_clickable_ancestor(node: ElementTree.Element, root: ElementTree.Element) -> bool:
+    parents = {child: parent for parent in root.iter() for child in parent}
+    current = parents.get(node)
+    while current is not None:
+        if _boolean_attribute(current, "clickable") and _boolean_attribute(current, "enabled"):
+            return True
+        current = parents.get(current)
+    return False
+
+
+def _normalize(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _capture_timeout(actions: AppiumActions, text: str) -> None:
+    try:
+        actions.capture_state(f"target-not-clickable-{text}")
+    except Exception:
+        pass
 
 
 def _driver_value(driver: Any, name: str) -> str | None:

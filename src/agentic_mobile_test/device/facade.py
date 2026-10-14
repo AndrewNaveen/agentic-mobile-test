@@ -8,7 +8,12 @@ from typing import Any, Iterable
 from ..appium.actions import AppiumActions, SwipeDirection
 from ..appium.models import ActionResult, OverlayRule
 from ..appium.targets import AppiumTargetResolver, ResolvedTarget, TargetCatalog, TargetState
-from .platform import DeviceOperationResult, PlatformDeviceAdapter, create_platform_adapter
+from .platform import (
+    DeviceConnectivity,
+    DeviceOperationResult,
+    PlatformDeviceAdapter,
+    create_platform_adapter,
+)
 from .profile import DeviceGeometry, DeviceProfile
 
 
@@ -20,6 +25,52 @@ class SystemSettings:
 
     def launch_root(self, *, timeout_seconds: float = 10.0) -> DeviceOperationResult:
         return self._adapter.launch_settings_root(timeout_seconds=timeout_seconds)
+
+
+class DeviceApplications:
+    """Installed-app checks and foreground launches shared by mobile tests."""
+
+    def __init__(self, adapter: PlatformDeviceAdapter) -> None:
+        self._adapter = adapter
+
+    def is_installed(self, app_id: str) -> bool:
+        return self._adapter.is_app_installed(app_id)
+
+    def launch(
+        self,
+        app_id: str,
+        *,
+        timeout_seconds: float = 10.0,
+    ) -> DeviceOperationResult:
+        return self._adapter.launch_app(app_id, timeout_seconds=timeout_seconds)
+
+
+class DeviceNetwork:
+    """Network state controls with explicit capture/restore for test cleanup."""
+
+    def __init__(self, adapter: PlatformDeviceAdapter) -> None:
+        self._adapter = adapter
+
+    def get_connectivity(self) -> DeviceConnectivity:
+        return self._adapter.get_connectivity()
+
+    def set_connectivity(self, state: DeviceConnectivity) -> DeviceOperationResult:
+        return self._adapter.set_connectivity(state)
+
+    def set_airplane_mode(self, enabled: bool) -> DeviceOperationResult:
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be a boolean")
+        current = self.get_connectivity()
+        requested = (
+            DeviceConnectivity(False, False, True)
+            if enabled
+            else DeviceConnectivity(
+                current.wifi_enabled,
+                current.mobile_data_enabled,
+                False,
+            )
+        )
+        return self.set_connectivity(requested)
 
 
 class SemanticUI:
@@ -93,6 +144,29 @@ class SemanticUI:
             timeout_seconds=timeout_seconds,
         )
 
+    def type_text(
+        self,
+        target_id: str,
+        text: str,
+        *,
+        clear_first: bool = True,
+        timeout_seconds: float | None = None,
+        overlays: Iterable[OverlayRule] = (),
+    ) -> ActionResult:
+        """Type into a reviewed semantic target through the existing action layer."""
+        resolved = self.resolve(
+            target_id,
+            state="clickable",
+            timeout_seconds=timeout_seconds,
+        )
+        return self.actions.type_text(
+            resolved.locator,
+            text,
+            clear_first=clear_first,
+            overlays=overlays,
+            timeout_seconds=timeout_seconds,
+        )
+
     def scroll_until_visible(
         self,
         target_id: str,
@@ -123,6 +197,8 @@ class MobileDevice:
         actions: AppiumActions,
         platform: PlatformDeviceAdapter,
         settings: SystemSettings,
+        apps: DeviceApplications,
+        network: DeviceNetwork,
         ui: SemanticUI,
     ) -> None:
         self.driver = driver
@@ -130,6 +206,8 @@ class MobileDevice:
         self.actions = actions
         self.platform = platform
         self.settings = settings
+        self.apps = apps
+        self.network = network
         self.ui = ui
 
     @classmethod
@@ -163,6 +241,8 @@ class MobileDevice:
             actions=actions,
             platform=platform,
             settings=SystemSettings(platform),
+            apps=DeviceApplications(platform),
+            network=DeviceNetwork(platform),
             ui=SemanticUI(actions, catalog, resolver),
         )
 

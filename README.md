@@ -1,141 +1,115 @@
 # Agentic Mobile Test
 
-This learning project implements a small, inspectable agentic mobile-testing
-loop. An LLM may choose the next semantic action from the current screenshot
-and Android UI hierarchy, but deterministic code validates and executes every
-action through Appium. The LLM never controls the final verdict.
+An experimental Python/pytest framework for discovering mobile UI workflows
+with an LLM, executing approved actions through Appium, and turning reviewed
+discoveries into deterministic regression tests. The model proposes actions;
+the framework enforces the action policy and deterministic assertions decide
+the result. The framework owns its discovery, execution, and evidence workflow.
 
-Artemis is useful reference material, but it is not a dependency or execution
-path in this repository.
+## First-time setup
 
-## What the project demonstrates
-
-```text
-approved scenario
-      ↓
-Appium observation (screenshot + UI hierarchy)
-      ↓
-structured LLM action using an observed element reference
-      ↓
-deterministic policy validation
-      ↓
-AppiumActions execution
-      ↓
-new observation + independent assertion
-      ↓
-evidence-backed result
-```
-
-The current code includes the contracts, provider-neutral planner boundary,
-action policy, Appium observation and execution adapters, independent visible-
-text verifier, bounded loop, local evidence writer, a semantic-target resolver,
-and a cross-platform device facade. The opt-in Gemini gateway is cost-bounded
-and kept separate from normal offline pytest runs.
-
-## Setup
-
-Python 3.11 or later, Node.js, Android Studio, an Android emulator, and the
-Android platform tools are required. See [prerequisites](docs/prerequisites.md).
-
-Create the Python environment:
+Complete the machine and account setup in [Prerequisites](docs/prerequisites.md)
+once. It covers Python, Android Studio/emulator, project-local Appium, and the
+optional Gemini API key. Do all repository commands from the project root:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev,appium]'
+cd /Users/andrewsekar/repos/agentic-mobile-test
 ```
 
-Install the project-local Appium server and UiAutomator2 driver:
+Before the first Gemini run, create the local key file if it does not exist:
 
 ```sh
-npm ci
-npm run appium:setup
-npm run appium:doctor
+test -f .env || cp .env.example .env
 ```
 
-Run the deterministic architecture checks:
+Edit `.env` and set `GEMINI_API_KEY` to your key. This file is ignored by Git.
+On macOS, `open -e .env` opens it in TextEdit. Do this once; do not repeat it
+at the start of each session.
+
+## Every work session
+
+1. Start the Android emulator in Android Studio.
+2. In a terminal, enter the repository and activate Python:
+
+   ```sh
+   cd /Users/andrewsekar/repos/agentic-mobile-test
+   source .venv/bin/activate
+   adb devices
+   ```
+
+3. For a Gemini discovery run, load the key from the ignored project-root
+   `.env` file without printing it. The file must first be created and filled
+   in using the one-time setup above:
+
+   ```sh
+   set -a
+   source .env
+   set +a
+   test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
+   ```
+
+4. Appium is normally started by pytest on this project's dedicated port 4725.
+   If you want to start it yourself to see server logs, first check whether
+   that port is already serving Appium:
+
+   ```sh
+   curl -fsS http://127.0.0.1:4725/status
+   ```
+
+   If it is not already running, start it from the repository root:
+
+   ```sh
+   npm run appium:start
+   ```
+
+   Keep it running. Open a second terminal, repeat steps 2–3, then run pytest.
+   If the status check succeeds, do not start another server; pytest will reuse
+   the one already listening on `127.0.0.1:4725`.
+
+## Run the YouTube discovery
+
+With the emulator connected and the Gemini key loaded in the pytest terminal:
+
+```sh
+pytest tests/autotests/ui/android_settings/test_agentic_android_settings.py \
+  -m "appium and gemini" \
+  -k youtube-airplane-mode-offline \
+  --run-gemini \
+  --appium-udid emulator-5554 \
+  --appium-package com.android.settings \
+  --appium-activity .Settings \
+  --appium-no-reset -q
+```
+
+Change `emulator-5554` to the serial shown by `adb devices`. This scenario
+captures and restores the original network state, turns on Airplane mode,
+launches YouTube, and verifies its offline screen. Gemini makes paid API calls
+within the scenario's configured limits. For the full authoring, evidence review,
+and deterministic-test workflow, see [Working with the project](docs/workflow/README.md).
+
+## Run without an LLM
+
+The Android Settings baseline and unit suite do not call Gemini:
 
 ```sh
 source .venv/bin/activate
 pytest
 ```
 
-These checks use fakes for the model and Appium execution. They prove contract,
-policy, orchestration, evidence, and failure behavior; they do not claim that a
-real device journey works yet.
-
-## Run the Android Settings baseline
-
-The first live test opens Android Settings, scrolls to **About phone** (called
-**About emulated device** on recent Android emulators), taps it, and verifies
-that **Device name** is visible. This is intentionally a scripted Appium
-baseline; it proves the runner, action layer, device connection, and oracle
-before an LLM replaces the target-selection step.
-
-Start an English-language emulator and confirm its serial with `adb devices`,
-then run:
+The deterministic YouTube replay is a separate test:
 
 ```sh
-pytest -m appium \
-  --appium-udid emulator-5554 \
-  --appium-package com.android.settings \
-  --appium-activity .Settings \
-  --appium-no-reset
+pytest tests/autotests/ui/android_settings/test_youtube_airplane_mode_offline.py \
+  -m appium --appium-udid emulator-5554 \
+  --appium-package com.android.settings --appium-activity .Settings \
+  --appium-no-reset -q
 ```
 
-Pytest starts the project-local Appium server, creates a new WebDriver session,
-and writes screenshots plus UI-source evidence beneath `runs/`. If Appium is
-already running at `127.0.0.1:4723`, pytest reuses it.
+## Project map
 
-The baseline uses durable target names from
-`tests/autotests/ui/targets/android_settings.json`. The resolver checks locator
-candidates in reviewed order, requires exactly one eligible match, and writes
-`locator-trace.jsonl` in the run directory. A trace identifies the catalog,
-screen, locator attempts, match counts, selected rank, current activity, and
-failure evidence.
-
-For a future APK-based scenario, use:
-
-```sh
-pytest -m appium \
-  --appium-udid emulator-5554 \
-  --appium-app /absolute/path/to/application.apk
-```
-
-The model provider remains unselected. The baseline does not make a network or
-LLM call.
-
-## Structure
-
-```text
-src/agentic_mobile_test/
-├── contracts.py          # Scenario, observation, action, trace, and verdict types
-├── planner.py            # Strict structured-output LLM boundary
-├── policy.py             # Deterministic action and repetition guardrails
-├── runner.py             # Bounded observe-plan-act-verify loop
-├── verifier.py           # Independent deterministic assertions
-├── artifacts.py          # Redacted scenario, step, and result evidence
-├── device/
-│   ├── profile.py        # Session identity and live screen geometry
-│   ├── platform.py       # Android/iOS operating-system adapters
-│   └── facade.py         # MobileDevice, system settings, and semantic UI
-└── appium/
-    ├── actions.py        # Reviewed deterministic Appium operations
-    ├── models.py         # Low-level action data types
-    ├── observer.py       # Screenshot/UI-tree perception and element references
-    ├── executor.py       # Maps approved actions to AppiumActions
-    └── targets.py        # Durable targets, ranked resolution, and locator traces
-
-tests/autotests/ui/       # Contract checks, live scenario, and target catalogs
-runs/                     # Ignored local execution evidence
-```
-
-Tests construct one `MobileDevice` from the active Appium session and the
-appropriate target catalog. Application workflows call semantic operations
-such as `device.ui.tap("settings.about_device")`; reviewed `AppiumActions`
-still own the physical tap, swipe, wait, and evidence behavior. Platform-only
-operations use the same facade, for example `device.settings.launch_root()`.
-
-Read [architecture](docs/architecture.md), [MVP](docs/mvp.md), the
-[Appium action contract](docs/appium-actions.md), and the
-[model gateway guide](docs/model-gateway.md) before extending the system.
+- `src/agentic_mobile_test/` — agent loop, Appium/device adapters, Gemini
+  gateway, verification, evidence, and test generation.
+- `tests/unit/` — offline tests; `tests/integration/` — opt-in provider tests;
+  `tests/autotests/ui/` — live mobile scenarios and pytest fixtures.
+- `docs/workflow/README.md` — scenario-to-discovery-to-regression instructions.
+- `runs/` — local screenshots, UI snapshots, logs, and run records; ignored by Git.

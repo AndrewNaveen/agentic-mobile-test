@@ -19,7 +19,7 @@ gemini = ["google-genai==2.22.0"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
-testpaths = ["tests/autotests/ui"]
+testpaths = ["tests"]
 markers = [
     "appium: requires an Android app, connected device, and Appium configuration",
     "gemini: makes an explicitly enabled paid Gemini API request",

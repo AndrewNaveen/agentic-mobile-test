@@ -20,7 +20,15 @@ from agentic_mobile_test.appium.targets import (
 
 
 def test_catalog_loads_ranked_semantic_targets() -> None:
-    path = Path(__file__).with_name("targets") / "android_settings.json"
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "tests"
+        / "autotests"
+        / "ui"
+        / "android_settings"
+        / "targets"
+        / "android_settings.json"
+    )
 
     catalog = TargetCatalog.load(path)
     target = catalog.require("settings.about_device")

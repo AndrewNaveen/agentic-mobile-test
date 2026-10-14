@@ -18,21 +18,23 @@ Use these names precisely:
 - **AppiumActions** is our deterministic helper class on top of Appium. Do not
   call this class a driver.
 - **AgentLoop** owns the bounded observe-plan-policy-act-verify cycle.
-- **StructuredPlanner** is the strict boundary to a future model provider.
-- **Artemis** is reference material only, not a project dependency or runtime.
+- **StructuredPlanner** is the provider-neutral structured-output boundary;
+  Gemini is the current opt-in provider adapter.
 - Avoid the generic word **backend** when the specific component name is clearer.
 
 # Current scope
 
 - Use Python and pytest. Do not add a custom project CLI unless the user agrees
   that pytest cannot handle the requirement.
-- Keep tests under `tests/autotests/ui/`.
-- Keep deterministic contract checks and the future live scenario in the
-  current test tree. Do not create `unit`, `smoke`, or `regression` trees yet.
+- Keep reusable framework code under `src/agentic_mobile_test/`; keep pytest
+  tests and fixtures under `tests/`.
+- Separate `tests/unit/`, opt-in `tests/integration/`, and live
+  `tests/autotests/ui/` suites by test level.
 - Start with one Android application and one meaningful journey.
 - Do not add a database, RAG, MCP, web dashboard, registry service, review UI,
   or multi-agent framework without a demonstrated need and user agreement.
-- Keep the model boundary provider-neutral until the user selects a provider.
+- Keep the model boundary provider-neutral while treating Gemini as the current
+  explicit, cost-bounded adapter.
 - Normal pytest checks must run without network access or paid model calls.
 
 # Architecture boundaries
@@ -127,6 +129,11 @@ Creation is an authoring workflow:
 5. Produce a candidate pytest test or test contract for human review.
 6. Approve a specific version.
 
+Successful discovery can be converted into a deterministic pytest candidate by
+the test generator. Generation must validate the run, scenario, evidence hashes,
+and semantic target mappings. The candidate is written as `.py.candidate`, is
+not collected by pytest, and requires human review before promotion to `.py`.
+
 Regression is an execution workflow:
 
 - Run the exact approved version.
@@ -168,6 +175,19 @@ Keep these four outcomes distinct:
 - Never commit API keys, credentials, local research-tool data, emulator data,
   or generated run evidence unless the user explicitly requests a fixture.
 
+# Pytest structure
+
+- `tests/conftest.py` owns shared test options, session-scoped Appium server
+  lifecycle, and isolated function-scoped WebDriver sessions.
+- `tests/autotests/ui/conftest.py` owns UI evidence, device composition, and
+  UI-state setup/cleanup. Keep test actions and assertions visible in test
+  functions.
+- Unit tests belong under `tests/unit/`; paid provider checks belong under
+  `tests/integration/`; real-device journeys belong under
+  `tests/autotests/ui/`.
+- Keep Android Settings scenarios and locator catalogs together under
+  `tests/autotests/ui/android_settings/`.
+
 # Validation
 
 - Keep changes small enough to review.
@@ -178,7 +198,8 @@ Keep these four outcomes distinct:
   scenario works until it has run through a real Appium session.
 - Report what was actually exercised, including skipped tests and missing live
   validation.
-- Do not add test files outside `tests/autotests/ui/` under the current scope.
+- Check that unit tests remain offline and that live Appium/Gemini tests require
+  explicit device configuration or paid-request opt-in.
 
 # Communication
 

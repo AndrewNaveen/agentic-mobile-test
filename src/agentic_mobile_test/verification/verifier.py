@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .contracts import (
+from ..contracts import (
     AssertionCheck,
     Observation,
     Scenario,
+    TextExpectation,
     VerificationResult,
     VerificationState,
 )
@@ -17,8 +18,8 @@ class Verifier(Protocol):
     def evaluate(self, scenario: Scenario, observation: Observation) -> VerificationResult: ...
 
 
-class VisibleTextVerifier:
-    """Check approved visible-text assertions without asking the planner."""
+class TextVerifier:
+    """Check approved visible/absent text assertions without asking the planner."""
 
     def evaluate(self, scenario: Scenario, observation: Observation) -> VerificationResult:
         visible_values = tuple(
@@ -28,7 +29,13 @@ class VisibleTextVerifier:
             if value
         )
         checks = tuple(
-            self._check(assertion.assertion_id, assertion.text, assertion.exact, visible_values)
+            self._check(
+                assertion.assertion_id,
+                assertion.text,
+                assertion.exact,
+                assertion.expectation,
+                visible_values,
+            )
             for assertion in scenario.assertions
         )
         passed = all(check.passed for check in checks)
@@ -47,18 +54,28 @@ class VisibleTextVerifier:
         assertion_id: str,
         expected: str,
         exact: bool,
+        expectation: TextExpectation,
         visible_values: tuple[str, ...],
     ) -> AssertionCheck:
         if exact:
-            passed = expected in visible_values
+            found = expected in visible_values
         else:
-            passed = any(expected in value for value in visible_values)
-        return AssertionCheck(
-            assertion_id=assertion_id,
-            passed=passed,
-            detail=(
+            found = any(expected in value for value in visible_values)
+        passed = found if expectation is TextExpectation.VISIBLE else not found
+        if expectation is TextExpectation.VISIBLE:
+            detail = (
                 f"Observed expected text: {expected!r}"
                 if passed
                 else f"Expected text is not visible: {expected!r}"
-            ),
+            )
+        else:
+            detail = (
+                f"Confirmed text is absent: {expected!r}"
+                if passed
+                else f"Unexpected text is visible: {expected!r}"
+            )
+        return AssertionCheck(
+            assertion_id=assertion_id,
+            passed=passed,
+            detail=detail,
         )

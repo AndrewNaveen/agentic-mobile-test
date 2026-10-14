@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scenario_id": "android-settings-about-phone",
+  "scenario_type": "positive",
+  "goal": "Open Android Settings About phone or About emulated device so device information is visible",
+  "preconditions": [
+    "Android Settings is open at its root screen"
+  ],
+  "cleanup": [
+    "Return Android Settings to its root screen"
+  ],
+  "assertions": [
+    {
+      "assertion_id": "device-name",
+      "text": "Device name",
+      "exact": true,
+      "expectation": "visible"
+    }
+  ],
+  "allowed_actions": [
+    "tap",
+    "scroll_forward",
+    "press_back"
+  ],
+  "test_data": {},
+  "launchable_apps": {},
+  "max_steps": 3
+}

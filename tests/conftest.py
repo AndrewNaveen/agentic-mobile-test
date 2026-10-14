@@ -19,7 +19,7 @@ import pytest
 
 LOGGER = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_APPIUM_URL = "http://127.0.0.1:4723"
+DEFAULT_APPIUM_URL = "http://127.0.0.1:4725"
 DEFAULT_ANDROID_HOME = Path.home() / "Library/Android/sdk"
 DEFAULT_JAVA_HOME = Path("/Applications/Android Studio.app/Contents/jbr/Contents/Home")
 
@@ -303,7 +303,7 @@ def _server_address(server_url: str) -> tuple[str, int]:
         raise pytest.UsageError(
             "Appium server URL must use HTTP and contain only a host and optional port"
         )
-    return parsed.hostname, parsed.port or 4723
+    return parsed.hostname, parsed.port or 4725
 
 
 def _appium_is_ready(server_url: str) -> bool:

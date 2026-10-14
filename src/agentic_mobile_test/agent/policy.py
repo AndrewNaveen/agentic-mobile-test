@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .contracts import ActionKind, Observation, PlannedAction, Scenario, StepRecord
+from ..contracts import ActionKind, Observation, PlannedAction, Scenario, StepRecord
 
 
 class PolicyViolation(ValueError):
@@ -49,6 +49,9 @@ class ActionPolicy:
         if action.kind is ActionKind.TYPE_TEXT:
             if not action.value_ref or action.value_ref not in scenario.test_data:
                 raise PolicyViolation("type_text requires an approved test-data reference")
+        elif action.kind is ActionKind.LAUNCH_APP:
+            if not action.value_ref or action.value_ref not in scenario.launchable_apps:
+                raise PolicyViolation("launch_app requires an approved app reference")
         elif action.value_ref is not None:
             raise PolicyViolation(f"{action.kind.value} cannot include value_ref")
 

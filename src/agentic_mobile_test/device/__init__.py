@@ -1,8 +1,16 @@
 """Cross-platform mobile device facade."""
 
-from .facade import MobileDevice, SemanticUI, SystemSettings
+from .facade import (
+    DeviceApplications,
+    DeviceNetwork,
+    MobileDevice,
+    SemanticUI,
+    SystemSettings,
+)
 from .platform import (
+    AppNotInstalledError,
     AndroidDeviceAdapter,
+    DeviceConnectivity,
     DeviceOperationError,
     DeviceOperationResult,
     IOSDeviceAdapter,
@@ -13,7 +21,11 @@ from .profile import DeviceGeometry, DeviceProfile, MobilePlatform, Viewport
 
 __all__ = [
     "AndroidDeviceAdapter",
+    "AppNotInstalledError",
+    "DeviceApplications",
+    "DeviceConnectivity",
     "DeviceGeometry",
+    "DeviceNetwork",
     "DeviceOperationError",
     "DeviceOperationResult",
     "DeviceProfile",

@@ -20,7 +20,6 @@ The MVP should prove one claim:
 
 ## Excluded
 
-- Artemis integration.
 - Multiple applications, iOS, cross-app workflows, or device farms.
 - Page-object generation, dashboards, databases, MCP, and multi-agent graphs.
 - LLM-authored assertions during execution.
@@ -38,14 +37,23 @@ The MVP should prove one claim:
 
 ## Current baseline
 
-`test_android_settings.py` implements the same journey deterministically. It
-uses a reviewed text locator to establish that Appium, pytest, evidence capture,
-and the destination assertion work before adding model uncertainty.
+`tests/autotests/ui/android_settings/test_android_settings.py` implements the
+same journey deterministically. It uses a reviewed semantic target to establish
+that Appium, pytest, evidence capture, and the destination assertion work
+without model uncertainty.
 
-## Decisions still required
+## Test layout
 
-Before converting the baseline into the first live agentic scenario, select:
+- `tests/conftest.py` configures Appium once per pytest run and creates a fresh
+  WebDriver session for each test.
+- `tests/autotests/ui/conftest.py` establishes Android Settings state and
+  captures setup/cleanup evidence for UI journeys.
+- `tests/unit/` covers contracts and orchestration offline; `tests/integration/`
+  contains explicitly enabled live provider checks; device journeys live under
+  `tests/autotests/ui/`.
 
-1. The model provider and credentials strategy.
-
-Those decisions affect real behavior and should not be guessed by the framework.
+Use behavior-specific test names such as
+`test_add_device_shows_connection_error`. Express visible/absent text as
+assertion expectations in a fixed scenario contract, not generic test functions
+like `test_something_exists`. An absence assertion must follow the action under
+test; an initially absent message alone is not evidence of a negative result.

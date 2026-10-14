@@ -1,20 +1,22 @@
-# Model Gateway Guide
+# Model Gateway Reference
 
-This guide records how Gemini will connect to the agentic discovery loop and
-what to do each time you work on the project. Deterministic regression tests do
-not require Gemini.
+For the complete start-to-finish project workflow, including scenario authoring,
+emulator/Appium setup, Gemini discovery, and candidate generation, see the
+[working guide](workflow/README.md). This page is the deeper reference for
+Gemini configuration, cost controls, and gateway behavior.
+
+This guide records Gemini's safety limits and gateway behavior. For the
+repeat-every-session commands, use the [working guide](workflow/README.md);
+first-time key and billing setup is in [prerequisites](prerequisites.md).
+Deterministic regression tests do not require Gemini.
 
 ## Current Status
 
-- Google AI Studio project: `artemis-explore`
+- Google AI Studio project: the project selected for this API key
 - Billing: Prepay with auto-reload disabled
 - Intended model: `gemini-3.5-flash-lite`
-- Existing local key: `.artemis/.env`
+- Local key file: `.env` (ignored by Git)
 - Gemini gateway: implemented with offline contract tests
-
-The Artemis runtime is reference material only. Do not launch it as part of
-this framework: its configuration uses different models and permits unbounded
-turns. We may reuse the API credential, but not its agent runtime.
 
 ## One-Time Google Setup
 
@@ -27,7 +29,7 @@ turns. We may reuse the API credential, but not its agent runtime.
 The model is selected in each API request, not on the billing page. The billing
 page's model selector only filters cost reporting.
 
-## Start of Every Work Session
+## Load the Key in a New Pytest Terminal
 
 From the repository root:
 
@@ -35,15 +37,17 @@ From the repository root:
 cd /Users/andrewsekar/repos/agentic-mobile-test
 source .venv/bin/activate
 
-GEMINI_API_KEY="$(sed -n 's/^GEMINI_API_KEY=//p' .artemis/.env)"
-export GEMINI_API_KEY
+set -a
+source .env
+set +a
 test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
 ```
 
 Do not run `echo "$GEMINI_API_KEY"`. The export lasts only for the current
 terminal. A new terminal requires repeating these steps.
 
-Confirm the emulator before a live mobile run:
+This export lasts only for the current terminal. Do not run
+`echo "$GEMINI_API_KEY"`. Confirm the emulator before a live mobile run:
 
 ```bash
 adb devices
@@ -55,13 +59,7 @@ Run normal offline checks with:
 pytest
 ```
 
-Install the optional Gemini SDK once in the project environment before the
-first model-backed experiment:
-
-```bash
-python -m pip install -e '.[gemini]'
-```
-
+The SDK is installed during the one-time setup in [prerequisites](prerequisites.md).
 Normal pytest never calls Gemini. The connection experiment requires both its
 marker and the explicit paid-request option:
 
@@ -84,10 +82,12 @@ The `GeminiGateway` enforces:
 
 These defaults are implemented in `GeminiBudget`. The dollar value is a local
 estimate based on configured token prices, not a replacement for Google billing
-controls. Update the prices when the selected model's published pricing changes.
+controls. The Android Settings live test overrides these defaults with its
+scenario step limit, 100 output tokens per call, and a `$0.005` estimated run
+limit. Update the prices when the selected model's published pricing changes.
 
 The gateway only communicates with Gemini. It does not execute Appium actions,
-change assertions, determine the verdict, or silently fall back to Artemis.
+change assertions, or determine the verdict.
 
 ## Intended Runtime Flow
 

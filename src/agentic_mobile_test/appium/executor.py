@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .actions import AppiumActions
 from ..contracts import (
     ActionKind,
@@ -11,10 +13,19 @@ from ..contracts import (
     Scenario,
 )
 
+if TYPE_CHECKING:
+    from ..device.facade import DeviceApplications
+
 
 class AppiumExecutor:
-    def __init__(self, actions: AppiumActions) -> None:
+    def __init__(
+        self,
+        actions: AppiumActions,
+        *,
+        apps: DeviceApplications | None = None,
+    ) -> None:
         self.actions = actions
+        self.apps = apps
 
     def execute(
         self,
@@ -31,6 +42,13 @@ class AppiumExecutor:
                 self._locator(action, observation),
                 scenario.test_data[action.value_ref],
             )
+        elif action.kind is ActionKind.LAUNCH_APP:
+            if action.value_ref is None:
+                raise ValueError("A policy-approved launch_app action requires value_ref")
+            if self.apps is None:
+                raise ValueError("launch_app requires the device applications facade")
+            app_id = scenario.launchable_apps[action.value_ref]
+            result = self.apps.launch(app_id)
         elif action.kind in {
             ActionKind.SCROLL_FORWARD,
             ActionKind.SCROLL_BACKWARD,
