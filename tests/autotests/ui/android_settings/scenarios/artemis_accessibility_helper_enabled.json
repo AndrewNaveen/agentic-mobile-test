@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "scenario_id": "artemis-accessibility-helper-enabled",
+  "scenario_type": "positive",
+  "goal": "From Home, open Settings, navigate to Accessibility, find Artemis Accessibility Helper and open its details. Verify its service toggle is already on. Do not enable, disable or otherwise change any toggle. If the helper is missing or off, do not try to fix it.",
+  "start_screen": "home",
+  "cleanup_screen": "home",
+  "allow_toggle_changes": false,
+  "preconditions": ["The Android device is unlocked and its Home screen is available."],
+  "cleanup": ["Return to Home without changing accessibility service state."],
+  "assertions": [
+    {
+      "assertion_id": "helper-service-enabled",
+      "text": "Artemis Accessibility Helper",
+      "exact": false,
+      "expectation": "visible",
+      "checked": true
+    }
+  ],
+  "allowed_actions": ["launch_app", "tap", "scroll_forward", "scroll_backward", "press_back"],
+  "required_interactions": [],
+  "test_data": {},
+  "launchable_apps": {"settings": "com.android.settings"},
+  "max_steps": 10
+}

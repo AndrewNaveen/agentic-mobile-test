@@ -86,6 +86,9 @@ def _scenario_record(scenario: Scenario) -> dict[str, Any]:
         "launchable_apps": scenario.launchable_apps,
         "test_data_refs": sorted(scenario.test_data),
         "max_steps": scenario.max_steps,
+        "start_screen": scenario.start_screen,
+        "cleanup_screen": scenario.cleanup_screen,
+        "allow_toggle_changes": scenario.allow_toggle_changes,
     }
 
 
@@ -119,6 +122,8 @@ def _discovered_step(run_directory: Path, step: StepRecord) -> dict[str, Any]:
             "accessibility_id": observed_target.accessibility_id,
             "resource_id": observed_target.resource_id,
             "class_name": observed_target.class_name,
+            "toggles_state": observed_target.toggles_state,
+            "checked": observed_target.checked,
             "locator_candidate": (
                 {
                     "strategy": observed_target.locator_strategy,

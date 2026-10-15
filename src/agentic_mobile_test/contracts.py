@@ -30,12 +30,20 @@ class TextAssertion:
     text: str
     exact: bool = True
     expectation: TextExpectation = TextExpectation.VISIBLE
+    checked: bool | None = None
+    resource_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.assertion_id.strip() or not self.text.strip():
             raise ValueError("Text assertions require an id and non-empty text")
         if not isinstance(self.expectation, TextExpectation):
             raise ValueError("Text expectation must be visible or absent")
+        if self.checked is not None:
+            if not isinstance(self.checked, bool) or self.expectation is not TextExpectation.VISIBLE:
+                raise ValueError("checked requires a boolean and a visible assertion")
+        if self.resource_id is not None:
+            if not isinstance(self.resource_id, str) or not self.resource_id.strip() or self.checked is None:
+                raise ValueError("resource_id requires a non-empty ID and a checked assertion")
 
 
 @dataclass(frozen=True)
@@ -76,8 +84,15 @@ class Scenario:
     preconditions: tuple[str, ...] = ()
     cleanup: tuple[str, ...] = ()
     required_interactions: tuple[RequiredInteraction, ...] = ()
+    start_screen: str = "settings_root"
+    cleanup_screen: str = "settings_root"
+    allow_toggle_changes: bool = True
 
     def __post_init__(self) -> None:
+        if self.start_screen not in {"settings_root", "home"} or self.cleanup_screen not in {"settings_root", "home"}:
+            raise ValueError("Screen checkpoints must be settings_root or home")
+        if not isinstance(self.allow_toggle_changes, bool):
+            raise ValueError("allow_toggle_changes must be a boolean")
         if not self.scenario_id.strip() or not self.goal.strip():
             raise ValueError("A scenario requires an id and goal")
         if not self.assertions:
@@ -133,7 +148,7 @@ class Scenario:
             "max_steps",
         }
         missing = required - set(value)
-        unknown = set(value) - required - {"launchable_apps", "required_interactions"}
+        unknown = set(value) - required - {"launchable_apps", "required_interactions", "start_screen", "cleanup_screen", "allow_toggle_changes"}
         if missing or unknown:
             raise ValueError(
                 f"Scenario keys mismatch; missing={sorted(missing)}, "
@@ -188,6 +203,9 @@ class Scenario:
             preconditions=tuple(_string_list(value["preconditions"], "preconditions")),
             cleanup=tuple(_string_list(value["cleanup"], "cleanup")),
             required_interactions=interactions,
+            start_screen=value.get("start_screen", "settings_root"),
+            cleanup_screen=value.get("cleanup_screen", "settings_root"),
+            allow_toggle_changes=value.get("allow_toggle_changes", True),
         )
 
 
@@ -212,7 +230,7 @@ def _parse_required_interaction(value: object) -> RequiredInteraction:
 def _parse_assertion(value: object) -> TextAssertion:
     if not isinstance(value, Mapping):
         raise ValueError("Each assertion must be an object")
-    allowed = {"assertion_id", "text", "exact", "expectation"}
+    allowed = {"assertion_id", "text", "exact", "expectation", "checked", "resource_id"}
     if set(value) - allowed or not {"assertion_id", "text"}.issubset(value):
         raise ValueError(
             "Assertions require assertion_id and text; exact and expectation are optional"
@@ -229,6 +247,8 @@ def _parse_assertion(value: object) -> TextAssertion:
         text=_required_text(value["text"], "assertion text"),
         exact=exact,
         expectation=expectation,
+        checked=value.get("checked"),
+        resource_id=value.get("resource_id"),
     )
 
 
@@ -256,6 +276,10 @@ class ObservedElement:
     class_name: str = ""
     clickable: bool = False
     enabled: bool = True
+    checked: bool | None = None
+    toggles_state: bool = False
+    checkable: bool = False
+    toggle_labels: tuple[str, ...] = ()
     locator_strategy: str | None = field(default=None, repr=False)
     locator_value: str | None = field(default=None, repr=False)
 

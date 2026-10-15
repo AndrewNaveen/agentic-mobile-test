@@ -2,6 +2,9 @@
   "schema_version": 1,
   "scenario_id": "replace-with-kebab-case-id",
   "scenario_type": "positive",
+  "start_screen": "settings_root",
+  "cleanup_screen": "settings_root",
+  "allow_toggle_changes": true,
   "goal": "Describe the user-visible behavior to explore.",
   "preconditions": [
     "State what must already be true before the test starts."

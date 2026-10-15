@@ -2,6 +2,24 @@
   "schema_version": 1,
   "targets": [
     {
+      "id": "settings.accessibility",
+      "screen": "settings.home",
+      "locators": [{
+        "strategy": "-android uiautomator",
+        "value": "new UiSelector().text(\"Accessibility\")",
+        "description": "Accessibility entry observed in the reviewed helper discovery"
+      }]
+    },
+    {
+      "id": "settings.artemis_accessibility_helper",
+      "screen": "settings.accessibility",
+      "locators": [{
+        "strategy": "-android uiautomator",
+        "value": "new UiSelector().text(\"Artemis Accessibility Helper\")",
+        "description": "Service details entry, not the service enable switch"
+      }]
+    },
+    {
       "id": "settings.network_internet",
       "screen": "settings.home",
       "locators": [

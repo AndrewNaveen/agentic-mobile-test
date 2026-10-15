@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import monotonic
+import re
 from typing import Any, Mapping, Protocol
 
 from selenium.webdriver.support.ui import WebDriverWait
@@ -79,6 +80,8 @@ class PlatformDeviceAdapter(Protocol):
     profile: DeviceProfile
     settings_app_id: str
 
+    def go_home(self, *, timeout_seconds: float = 10.0) -> DeviceOperationResult: ...
+
     def launch_settings_root(
         self,
         *,
@@ -118,6 +121,34 @@ class AndroidDeviceAdapter:
             raise ValueError("AndroidDeviceAdapter requires an Android profile")
         self.actions = actions
         self.profile = profile
+
+    def go_home(self, *, timeout_seconds: float = 10.0) -> DeviceOperationResult:
+        """Launch Android's default HOME activity and verify its reported component."""
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+        started = monotonic()
+        try:
+            response = self.actions.driver.execute_script(
+                "mobile: startActivity",
+                {"wait": True, "action": "android.intent.action.MAIN",
+                 "categories": ["android.intent.category.HOME"], "flags": "0x10200000"},
+            )
+            match = re.search(r"Activity:\s*([^\s/]+)/([^\s]+)", str(response))
+            if match is None:
+                raise RuntimeError("HOME launch did not report its resolved Activity component")
+            package, activity = match.groups()
+            expected_activity = package + activity if activity.startswith(".") else activity
+            def at_home(driver: Any) -> bool:
+                current = str(getattr(driver, "current_activity", ""))
+                current = package + current if current.startswith(".") else current
+                return driver.current_package == package and current == expected_activity
+            WebDriverWait(self.actions.driver, timeout_seconds,
+                          poll_frequency=self.actions.poll_seconds).until(at_home)
+        except Exception as error:
+            raise DeviceOperationError("go-home", f"{type(error).__name__}: {error}",
+                                       evidence=_capture_failure(self.actions, "go-home")) from error
+        return DeviceOperationResult("go-home", monotonic() - started,
+                                     {"app_id": package, "activity": expected_activity})
 
     def launch_settings_root(
         self,
@@ -276,6 +307,9 @@ class AndroidDeviceAdapter:
 
 class IOSDeviceAdapter:
     settings_app_id = "com.apple.Preferences"
+
+    def go_home(self, *, timeout_seconds: float = 10.0) -> DeviceOperationResult:
+        raise DeviceOperationError("go-home", "verified Home checkpoint is Android-only")
 
     def __init__(
         self,

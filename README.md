@@ -1,115 +1,70 @@
 # Agentic Mobile Test
 
-An experimental Python/pytest framework for discovering mobile UI workflows
-with an LLM, executing approved actions through Appium, and turning reviewed
-discoveries into deterministic regression tests. The model proposes actions;
-the framework enforces the action policy and deterministic assertions decide
-the result. The framework owns its discovery, execution, and evidence workflow.
+A Python/pytest proof of concept for automating a clear mobile UI task:
 
-## First-time setup
+1. Describe one UI task, its expected result and the starting state you know.
+2. Gemini observes the screen and discovers actions through Appium.
+3. Deterministic assertions check the result; the framework saves the path and evidence.
+4. The generator converts a successful path into a pytest candidate.
+5. An engineer adds repeatable setup/cleanup, reviews it and runs replay without Gemini.
 
-Complete the machine and account setup in [Prerequisites](docs/prerequisites.md)
-once. It covers Python, Android Studio/emulator, project-local Appium, and the
-optional Gemini API key. Do all repository commands from the project root:
+Start with one task and an expected result you understand. No scenario-authoring
+skill or positive/negative/edge brainstorming is required.
+You do not need to design reusable fixtures upfront. Use discovery evidence to
+decide what state preparation the repeatable test needs.
+
+## Setup
+
+Complete [first-time prerequisites](docs/prerequisites.md) once: Python
+dependencies, Android emulator, project-local Appium and its driver, and a
+Gemini API key. Create the ignored key file if needed:
 
 ```sh
 cd /Users/andrewsekar/repos/agentic-mobile-test
-```
-
-Before the first Gemini run, create the local key file if it does not exist:
-
-```sh
 test -f .env || cp .env.example .env
 ```
 
-Edit `.env` and set `GEMINI_API_KEY` to your key. This file is ignored by Git.
-On macOS, `open -e .env` opens it in TextEdit. Do this once; do not repeat it
-at the start of each session.
+Edit `.env` to set your key before loading it.
 
-## Every work session
-
-1. Start the Android emulator in Android Studio.
-2. In a terminal, enter the repository and activate Python:
-
-   ```sh
-   cd /Users/andrewsekar/repos/agentic-mobile-test
-   source .venv/bin/activate
-   adb devices
-   ```
-
-3. For a Gemini discovery run, load the key from the ignored project-root
-   `.env` file without printing it. The file must first be created and filled
-   in using the one-time setup above:
-
-   ```sh
-   set -a
-   source .env
-   set +a
-   test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
-   ```
-
-4. Appium is normally started by pytest on this project's dedicated port 4725.
-   If you want to start it yourself to see server logs, first check whether
-   that port is already serving Appium:
-
-   ```sh
-   curl -fsS http://127.0.0.1:4725/status
-   ```
-
-   If it is not already running, start it from the repository root:
-
-   ```sh
-   npm run appium:start
-   ```
-
-   Keep it running. Open a second terminal, repeat steps 2–3, then run pytest.
-   If the status check succeeds, do not start another server; pytest will reuse
-   the one already listening on `127.0.0.1:4725`.
-
-## Run the YouTube discovery
-
-With the emulator connected and the Gemini key loaded in the pytest terminal:
+At each session, start the emulator and run:
 
 ```sh
-pytest tests/autotests/ui/android_settings/test_agentic_android_settings.py \
-  -m "appium and gemini" \
-  -k youtube-airplane-mode-offline \
-  --run-gemini \
-  --appium-udid emulator-5554 \
-  --appium-package com.android.settings \
-  --appium-activity .Settings \
-  --appium-no-reset -q
-```
-
-Change `emulator-5554` to the serial shown by `adb devices`. This scenario
-captures and restores the original network state, turns on Airplane mode,
-launches YouTube, and verifies its offline screen. Gemini makes paid API calls
-within the scenario's configured limits. For the full authoring, evidence review,
-and deterministic-test workflow, see [Working with the project](docs/workflow/README.md).
-
-## Run without an LLM
-
-The Android Settings baseline and unit suite do not call Gemini:
-
-```sh
+cd /Users/andrewsekar/repos/agentic-mobile-test
 source .venv/bin/activate
-pytest
+adb devices
+set -a
+source .env
+set +a
+test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
 ```
 
-The deterministic YouTube replay is a separate test:
+Pytest starts Appium on port **4725** when needed. To run it manually for logs,
+use `npm run appium:start` from the repository root in another terminal.
+Reuse an existing server instead of starting another on the same port.
+
+## Discover a task and validate its generated replay
+
+Follow the [task-to-replay guide](docs/workflow/README.md). It covers defining
+the initial task brief, saving the task contract, running one discovery,
+reviewing evidence, generating Python, and validating replay.
+
+The current runnable examples start in Android Settings. The existing YouTube
+replay was written manually from the explored journey; it is not proof of a
+completed generator-to-live-replay workflow. Validate a generated candidate
+through the guide before claiming that end-to-end result.
+
+## Offline checks
 
 ```sh
-pytest tests/autotests/ui/android_settings/test_youtube_airplane_mode_offline.py \
-  -m appium --appium-udid emulator-5554 \
-  --appium-package com.android.settings --appium-activity .Settings \
-  --appium-no-reset -q
+pytest tests/unit -q
 ```
+
+No device or Gemini key is needed for these tests.
 
 ## Project map
 
-- `src/agentic_mobile_test/` — agent loop, Appium/device adapters, Gemini
-  gateway, verification, evidence, and test generation.
-- `tests/unit/` — offline tests; `tests/integration/` — opt-in provider tests;
-  `tests/autotests/ui/` — live mobile scenarios and pytest fixtures.
-- `docs/workflow/README.md` — scenario-to-discovery-to-regression instructions.
-- `runs/` — local screenshots, UI snapshots, logs, and run records; ignored by Git.
+- `src/agentic_mobile_test/` — agent loop, Appium/device operations, Gemini,
+  assertions, evidence and generator.
+- `tests/autotests/ui/` — live tasks, replay tests and UI fixtures.
+- `tests/unit/` — offline checks; `tests/integration/` — opt-in provider checks.
+- `runs/` — local discovery records, screenshots and UI snapshots.

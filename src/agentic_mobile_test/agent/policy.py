@@ -36,6 +36,8 @@ class ActionPolicy:
             target = observation.element(action.target_ref)
             if target is None:
                 raise PolicyViolation(f"Unknown target reference: {action.target_ref}")
+            if not scenario.allow_toggle_changes and (target.toggles_state or target.checked is not None):
+                raise PolicyViolation("This scenario forbids changing toggle state")
             if not target.enabled:
                 raise PolicyViolation(f"Target {action.target_ref} is disabled")
             if not target.executable:

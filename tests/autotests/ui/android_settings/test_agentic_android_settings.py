@@ -36,6 +36,7 @@ ANDROID_SETTINGS_SCENARIOS = tuple(Scenario.load(path) for path in SCENARIO_PATH
 def test_agentic_android_settings_scenario(
     android_settings_environment: Any,
     scenario: Scenario,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Let Gemini navigate, but let deterministic code decide the verdict."""
 
@@ -116,6 +117,9 @@ def test_agentic_android_settings_scenario(
         assert network_record["captured_before"] == network_record["restored_after"]
         assert network_record["after_agent"]["airplane_mode_enabled"] is True
         assert network_record["after_agent"]["wifi_enabled"] is False
+
+    with capsys.disabled():
+        print(f"\nDiscovery JSON generated: {(result.run_directory / 'discovered-path.json').resolve()}")
 
 
 def _connectivity_record(state: DeviceConnectivity) -> dict[str, bool]:

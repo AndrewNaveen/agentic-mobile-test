@@ -251,3 +251,6 @@ class MobileDevice:
         """Capture current geometry so rotations do not leave stale dimensions."""
 
         return DeviceGeometry.from_driver(self.driver)
+
+    def go_home(self, *, timeout_seconds: float = 10.0) -> DeviceOperationResult:
+        return self.platform.go_home(timeout_seconds=timeout_seconds)

@@ -117,12 +117,17 @@ def _validate_discovery(
 
 
 def _scenario_matches(record: dict[str, Any], scenario: Scenario) -> bool:
+    raw_assertions = record.get("assertions")
+    if not isinstance(raw_assertions, list) or any(not isinstance(item, dict) for item in raw_assertions):
+        return False
     expected_assertions = [
         {
             "assertion_id": item.assertion_id,
             "text": item.text,
             "exact": item.exact,
             "expectation": item.expectation.value,
+            "checked": item.checked,
+            "resource_id": item.resource_id,
         }
         for item in scenario.assertions
     ]
@@ -133,7 +138,11 @@ def _scenario_matches(record: dict[str, Any], scenario: Scenario) -> bool:
         and record.get("goal") == scenario.goal
         and record.get("preconditions") == list(scenario.preconditions)
         and record.get("cleanup") == list(scenario.cleanup)
-        and record.get("assertions") == expected_assertions
+        and [dict({"checked": None, "resource_id": None}, **item)
+             for item in raw_assertions] == expected_assertions
+        and record.get("start_screen", "settings_root") == scenario.start_screen
+        and record.get("cleanup_screen", "settings_root") == scenario.cleanup_screen
+        and record.get("allow_toggle_changes", True) == scenario.allow_toggle_changes
         and record.get("allowed_actions")
         == sorted(action.value for action in scenario.allowed_actions)
         and record.get("launchable_apps") == dict(scenario.launchable_apps)
@@ -212,6 +221,10 @@ def _validated_steps(
             raise TestGenerationError(
                 f"Discovery step {sequence} uses disallowed action {action.value!r}"
             )
+        if not scenario.allow_toggle_changes and action in {ActionKind.TAP, ActionKind.TYPE_TEXT}:
+            target = action_data.get("target")
+            if not isinstance(target, dict) or target.get("toggles_state") is not False:
+                raise TestGenerationError("Read-only replay requires a recorded non-toggle target")
         parsed.append({"sequence": sequence, "action": action, "value_ref": action_data.get("value_ref")})
         if action in {
             ActionKind.TAP,
@@ -317,7 +330,7 @@ def _render_test(
         "@pytest.mark.appium",
         f"def {test_name}(android_settings_environment: Any) -> None:",
         '    """Replay the reviewed path and assert the fixed scenario oracle."""',
-        "    # Arrange: the UI fixture establishes and restores the Settings root.",
+        "    # Arrange: the UI fixture reads this scenario's start/cleanup checkpoints.",
         "    scenario = Scenario.load(SCENARIO_PATH)",
         "    device = android_settings_environment.device",
         "",

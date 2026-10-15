@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from hashlib import sha256
 import json
+from time import monotonic
 from typing import Any
 from xml.etree import ElementTree
 
@@ -20,17 +21,21 @@ class ObservationError(RuntimeError):
 
 
 class AppiumObserver:
-    def __init__(self, actions: AppiumActions) -> None:
+    def __init__(
+        self, actions: AppiumActions, *, settle_timeout_seconds: float = 10.0,
+        stable_seconds: float = 0.6, poll_seconds: float = 0.2,
+    ) -> None:
+        if not 0 < stable_seconds < settle_timeout_seconds or poll_seconds <= 0:
+            raise ValueError("Require 0 < stable_seconds < settle_timeout_seconds and positive polling")
         self.actions = actions
+        self.settle_timeout_seconds = settle_timeout_seconds
+        self.stable_seconds = stable_seconds
+        self.poll_seconds = poll_seconds
         self._sequence = 0
 
     def observe(self) -> Observation:
         self._sequence += 1
-        state = self.actions.capture_state(f"observation-{self._sequence:03d}")
-        try:
-            root = ElementTree.parse(state.ui_source).getroot()
-        except (OSError, ElementTree.ParseError) as error:
-            raise ObservationError(f"Unable to parse Appium UI source: {error}") from error
+        state, root, app_package, activity = self._settled_capture()
 
         nodes = list(root.iter())
         content_desc_counts = Counter(_attribute(node, "content-desc") for node in nodes)
@@ -39,7 +44,11 @@ class AppiumObserver:
         elements: list[ObservedElement] = []
 
         clickable_nodes = _nodes_with_clickable_ancestor(root)
+        toggle_targets = _toggle_targets(root)
+        parents = {child: parent for parent in root.iter() for child in parent}
         for node in nodes:
+            if node.attrib.get("displayed", "true").lower() == "false":
+                continue
             text = _attribute(node, "text")
             accessibility_id = _attribute(node, "content-desc")
             resource_id = _attribute(node, "resource-id")
@@ -67,13 +76,20 @@ class AppiumObserver:
                     class_name=class_name,
                     clickable=clickable,
                     enabled=enabled,
+                    checked=(
+                        _boolean_attribute(node, "checked")
+                        if _boolean_attribute(node, "checkable")
+                        and node.attrib.get("checked") in {"true", "false"}
+                        else None
+                    ),
+                    toggles_state=id(node) in toggle_targets,
+                    checkable=_boolean_attribute(node, "checkable"),
+                    toggle_labels=_toggle_labels(node, parents),
                     locator_strategy=strategy,
                     locator_value=locator,
                 )
             )
 
-        app_package = _driver_value(self.actions.driver, "current_package")
-        activity = _driver_value(self.actions.driver, "current_activity")
         fingerprint = _fingerprint(app_package, activity, elements)
         return Observation(
             sequence=self._sequence,
@@ -84,6 +100,59 @@ class AppiumObserver:
             app_package=app_package,
             activity=activity,
         )
+
+    def _settled_capture(self) -> tuple[Any, ElementTree.Element, str | None, str | None]:
+        """Require repeated image AND hierarchy agreement, not just foreground status.
+
+        Intermediate captures remain diagnostic files. Only the accepted sample
+        becomes an Observation and is copied into the successful discovery path.
+        Appium commands have their own transport timeouts; this bounds polling.
+        """
+        previous = None
+        stable_since = monotonic()
+        started = stable_since
+        samples = 0
+        last_state = None
+
+        def settled(driver: Any) -> Any:
+            nonlocal previous, stable_since, samples, last_state
+            samples += 1
+            before = (_driver_value(driver, "current_package"), _driver_value(driver, "current_activity"))
+            state = self.actions.capture_state(
+                f"observation-{self._sequence:03d}-settle-{samples:03d}"
+            )
+            last_state = state
+            try:
+                source = state.ui_source.read_text(encoding="utf-8")
+                root = ElementTree.fromstring(source)
+                image_hash = sha256(state.screenshot.read_bytes()).hexdigest()
+            except (OSError, ElementTree.ParseError) as error:
+                raise ObservationError(f"Unable to read observation evidence: {error}") from error
+            after = (_driver_value(driver, "current_package"), _driver_value(driver, "current_activity"))
+            # Include bounds and checked state, not only planner-facing labels.
+            signature = (image_hash, ElementTree.canonicalize(source), after)
+            now = monotonic()
+            if before != after or signature != previous:
+                stable_since = now
+                previous = signature if before == after else None
+                return False
+            if now - started >= self.settle_timeout_seconds:
+                return False
+            if now - stable_since < self.stable_seconds:
+                return False
+            return state, root, *after
+
+        try:
+            return WebDriverWait(
+                self.actions.driver, self.settle_timeout_seconds,
+                poll_frequency=self.poll_seconds,
+            ).until(settled)
+        except TimeoutException as error:
+            evidence = f" Last capture: {last_state.screenshot}" if last_state else ""
+            raise ObservationError(
+                f"Screen did not settle within {self.settle_timeout_seconds:g}s "
+                f"({samples} samples); no transition frame was sent to the planner.{evidence}"
+            ) from error
 
     def wait_for_clickable_text(
         self,
@@ -149,6 +218,8 @@ def _fingerprint(
                 "class_name": element.class_name,
                 "clickable": element.clickable,
                 "enabled": element.enabled,
+                "checked": element.checked,
+                "toggles_state": element.toggles_state,
             }
             for element in elements
         ],
@@ -159,6 +230,39 @@ def _fingerprint(
 
 def _attribute(node: ElementTree.Element, name: str) -> str:
     return str(node.attrib.get(name, "")).strip()
+
+
+def _toggle_targets(root: ElementTree.Element) -> set[int]:
+    """Protect switches plus their clickable row labels from verification taps."""
+    parents = {child: parent for parent in root.iter() for child in parent}
+    protected: set[int] = set()
+    for node in root.iter():
+        if not _boolean_attribute(node, "checkable"):
+            continue
+        protected.update(id(child) for child in node.iter())
+        parent = parents.get(node)
+        while parent is not None:
+            if _boolean_attribute(parent, "clickable"):
+                protected.update(id(child) for child in parent.iter())
+                break
+            parent = parents.get(parent)
+    return protected
+
+
+def _toggle_labels(
+    node: ElementTree.Element, parents: dict[ElementTree.Element, ElementTree.Element],
+) -> tuple[str, ...]:
+    """Associate a switch with labels in its immediate row, never the whole page."""
+    if not _boolean_attribute(node, "checkable"):
+        return ()
+    parent = parents.get(node)
+    if parent is None or sum(_boolean_attribute(child, "checkable") for child in parent.iter()) != 1:
+        return ()
+    return tuple(dict.fromkeys(
+        value for child in parent.iter()
+        for value in (_attribute(child, "text"), _attribute(child, "content-desc"))
+        if value and child.attrib.get("displayed", "true") != "false"
+    ))
 
 
 def _boolean_attribute(

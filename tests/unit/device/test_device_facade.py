@@ -215,6 +215,34 @@ def test_connectivity_bitmask_contract_is_explicit() -> None:
         DeviceConnectivity.from_appium_mask(0b1000)
 
 
+@pytest.mark.parametrize("response", [
+    "Status: ok\nActivity: com.android.launcher3/.Launcher\nComplete",
+    "Status: ok\nActivity: com.android.launcher3/com.android.launcher3.Launcher\nComplete",
+])
+def test_go_home_verifies_resolved_launcher(tmp_path: Path, response: str) -> None:
+    driver = _AndroidDriver()
+    def launch(script, arguments):
+        assert script == "mobile: startActivity"
+        assert arguments["categories"] == ["android.intent.category.HOME"]
+        driver.current_package = "com.android.launcher3"
+        driver.current_activity = ".Launcher"
+        return response
+    driver.execute_script = launch
+    adapter = AndroidDeviceAdapter(_Actions(driver, tmp_path), DeviceProfile.from_driver(driver))
+    assert adapter.go_home().details["app_id"] == "com.android.launcher3"
+
+
+@pytest.mark.parametrize("response", ["", "Activity: com.android.launcher3/.Launcher"])
+def test_go_home_fails_when_checkpoint_is_not_verified(tmp_path: Path, response: str) -> None:
+    driver = _AndroidDriver()
+    driver.execute_script = lambda *args: response
+    actions = _Actions(driver, tmp_path)
+    adapter = AndroidDeviceAdapter(actions, DeviceProfile.from_driver(driver))
+    with pytest.raises(DeviceOperationError, match="go-home"):
+        adapter.go_home(timeout_seconds=0.01)
+    assert "go-home" in actions.capture_labels
+
+
 class _Actions:
     default_timeout_seconds = 0.1
     poll_seconds = 0.01

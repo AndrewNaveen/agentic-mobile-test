@@ -33,7 +33,8 @@ explicit reviewed mapping:
 ```
 
 Pass it with `--target-map path/to/target-map.json`. Keys are 1-based discovery
-step numbers. The generator writes a `.py.candidate` beside the scenario; pytest
+step numbers. The generator writes a `.py.candidate` in the app suite directory,
+alongside the Python tests (not inside `scenarios/`); pytest
 does not collect that suffix. It uses semantic `device.ui` operations and the
 same deterministic scenario assertions, never ephemeral observation IDs or raw
 locators.

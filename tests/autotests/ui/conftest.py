@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pytest
 
-from agentic_mobile_test.contracts import RunResult
+from agentic_mobile_test.contracts import RunResult, Scenario
 from agentic_mobile_test.device import MobileDevice
 
 ANDROID_SETTINGS_PACKAGE = "com.android.settings"
@@ -28,11 +28,19 @@ class AndroidSettingsEnvironment:
     setup_record: dict[str, Any] | None = None
     cleanup_record: dict[str, Any] | None = None
     result: RunResult | None = None
+    start_screen: str = "settings_root"
+    cleanup_screen: str = "settings_root"
+
+    def _reach(self, screen: str) -> Any:
+        if screen == "home":
+            return self.device.go_home()
+        operation = self.device.settings.launch_root()
+        self._require_settings_package(screen)
+        return operation
 
     def setup(self) -> None:
         try:
-            operation = self.device.settings.launch_root()
-            self._require_settings_package("setup")
+            operation = self._reach(self.start_screen)
             self.setup_record = self._checkpoint("ready", operation.operation)
         except Exception as error:
             self.setup_record = _lifecycle_failure(error)
@@ -46,8 +54,7 @@ class AndroidSettingsEnvironment:
 
     def cleanup(self) -> None:
         try:
-            operation = self.device.settings.launch_root()
-            self._require_settings_package("cleanup")
+            operation = self._reach(self.cleanup_screen)
             self.cleanup_record = self._checkpoint("ready", operation.operation)
         except Exception as error:
             self.cleanup_record = _lifecycle_failure(error)
@@ -79,7 +86,7 @@ class AndroidSettingsEnvironment:
         payload = {
             "schema_version": 1,
             "environment": "android_settings",
-            "expected_checkpoint": {"app_package": ANDROID_SETTINGS_PACKAGE},
+            "expected_checkpoint": {"start_screen": self.start_screen, "cleanup_screen": self.cleanup_screen},
             "setup": self.setup_record,
             "cleanup": self.cleanup_record,
             "agent_run": (
@@ -106,6 +113,7 @@ class AndroidSettingsEnvironment:
 def android_settings_environment(
     driver: Any,
     runs_directory: Path,
+    request: pytest.FixtureRequest,
 ) -> Iterator[AndroidSettingsEnvironment]:
     """Launch and restore Android Settings around agentic navigation."""
     evidence_dir = runs_directory / (
@@ -120,8 +128,16 @@ def android_settings_environment(
         record_successful_actions=True,
     )
     environment = AndroidSettingsEnvironment(device, evidence_dir)
-    environment.setup()
+    if "scenario" in request.fixturenames:
+        scenario = request.getfixturevalue("scenario")
+    else:
+        scenario_path = getattr(request.module, "SCENARIO_PATH", None)
+        scenario = Scenario.load(scenario_path) if scenario_path is not None else None
+    if isinstance(scenario, Scenario):
+        environment.start_screen = scenario.start_screen
+        environment.cleanup_screen = scenario.cleanup_screen
     try:
+        environment.setup()
         yield environment
     finally:
         environment.cleanup()

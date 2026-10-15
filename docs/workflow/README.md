@@ -1,242 +1,275 @@
-# Working with Agentic Mobile Test
+# One UI task: discover, generate, replay
 
-This is the day-to-day guide for preparing a scenario, running Appium and Gemini discovery, reviewing the recorded path, and generating a deterministic pytest candidate. Start here when you return to the project.
+Use a task whose expected behavior you understand. Gemini discovers how to
+perform it through the current UI. Supply the expected result and what you know
+about the starting state; discovery helps reveal the rest.
 
-## The workflow at a glance
+## 1. Start with one clear UI task
 
-```text
-Write a reviewed scenario JSON
-        ↓
-Start emulator; load Gemini key
-        ↓
-Run one pytest scenario (pytest starts local Appium if needed)
-        ↓
-Review screenshots, UI snapshots, actions, and fixed assertions
-        ↓
-Generate a .py.candidate from a passed discovery
-        ↓
-Review, promote, and run it as deterministic regression
-```
-
-The model only proposes one action per observation. Policy checks it, Appium executes it, and deterministic assertions decide whether discovery passed. Do not treat model output or a screenshot as the test verdict.
-
-## 1. One-time setup
-
-Set up Python, Android Studio/SDK, the emulator, project-local Appium, and the
-optional Gemini key by following [First-Time Prerequisites](../prerequisites.md).
-Do not repeat `npm ci` or `npm run appium:setup` every session. Always run
-project commands from the repository root; otherwise npm cannot find this
-project's `package.json` and lockfile.
-
-## 2. Describe a scenario
-
-There is not yet an interactive natural-language scenario command. Copy [scenario-template.json](scenario-template.json), fill it in, and save it as a JSON file in:
+Write this short brief yourself or give it to your coding assistant:
 
 ```text
-tests/autotests/ui/android_settings/scenarios/<scenario-name>.json
+App suite: tests/autotests/ui/android_settings
+Starting state: Android Settings is open at its root.
+Task: Open About phone / About emulated device.
+Expected result: Device name is visible.
+Cleanup: Return to Settings root.
 ```
 
-You can ask a coding agent to draft and validate this file instead of writing
-the JSON yourself. This repository includes the [author-mobile-scenario
-skill](../../.agents/skills/author-mobile-scenario/SKILL.md). In Codex, invoke
-it with `$author-mobile-scenario`, then describe the scenario in plain English.
-In another Agent Skills-compatible agent, use that agent's skill interface or
-ask it explicitly: “Read `.agents/skills/author-mobile-scenario/SKILL.md` and
-follow it to draft a scenario for: …”. Some agents require a different
-discovery directory for automatic slash-command invocation; the SKILL.md
-instructions themselves are portable, but installation paths and commands are
-host-specific.
+Keep the same suite path for subsequent tasks for that app.
 
-The shared test automatically loads every JSON file in that folder. Use this shape:
+You do not need to know every screen, locator or reusable fixture yet. Record
+what you know and mark unknowns instead of inventing prerequisites. For a first
+learning run, manual preparation is fine if you record it and have a safe way
+to restore changed state. Do not prewrite the navigation for Gemini.
 
-```json
-{
-  "schema_version": 1,
-  "scenario_id": "youtube-airplane-mode-offline",
-  "scenario_type": "edge",
-  "goal": "Turn on Airplane mode in Settings, launch YouTube, dismiss its notification prompt if shown, and verify its offline screen.",
-  "preconditions": [
-    "Android Settings is open at its root screen",
-    "Airplane mode is off",
-    "YouTube is installed"
-  ],
-  "cleanup": [
-    "Restore the device network state captured before the scenario"
-  ],
-  "assertions": [
-    {
-      "assertion_id": "offline-message",
-      "text": "Connect to the internet",
-      "exact": false,
-      "expectation": "visible"
-    }
-  ],
-  "allowed_actions": [
-    "tap",
-    "scroll_forward",
-    "press_back",
-    "launch_app"
-  ],
-  "required_interactions": [
-    {
-      "action": "tap",
-      "target_text": "Airplane mode",
-      "minimum_count": 1
-    }
-  ],
-  "test_data": {},
-  "launchable_apps": {
-    "youtube": "com.google.android.youtube"
-  },
-  "max_steps": 10
-}
+For example, a new task could be: “Open Unknown tracker alerts, enable alerts,
+and run a manual scan.” Record the current alerts setting. If it is already on,
+the run can explore scanning but cannot demonstrate enabling it. The expected
+scan result must come from your known test environment, not Gemini's guess.
+This is an example brief, not an already-supported runnable scenario.
+
+The UI fixture defaults to opening and returning to Settings root. A scenario
+can set `"start_screen": "home"` and `"cleanup_screen": "home"` instead (Android).
+These are executable checkpoints, unlike descriptive preconditions. It does not restore
+arbitrary settings. Record additional state before changing it and restore it
+during teardown. The YouTube example has its own network preparation in test
+code; new tasks do not automatically inherit it.
+
+## 2. Save the task contract
+
+Ask your coding assistant to translate that brief using
+[scenario-template.json](scenario-template.json), or fill in the template yourself.
+Save one task per JSON file under:
+
+```text
+tests/autotests/ui/<app_suite>/scenarios/<task_name>.json
 ```
 
-The YouTube offline scenario stops at the offline state; the loading spinner and
-offline message are sufficient for that check. Retry is a separate deterministic
-test because its control appears later. That test uses the shared
-`device.actions.wait_until_visible` and `wait_until_clickable` methods before
-tapping it. Run it without Gemini:
+For the existing Settings suite, use `android_settings/scenarios/`.
+The existing discovery test collects each JSON directly in that folder; a new
+task does not need a copy of the discovery test.
 
-```sh
-pytest tests/autotests/ui/android_settings/test_android_settings.py::test_youtube_offline_retry_waits_until_actionable \
-  -m appium --appium-udid emulator-5554 \
-  --appium-package com.android.settings --appium-activity .Settings \
-  --appium-no-reset -q
-```
+The contract supplies the goal, fixed text assertions, permitted actions,
+test data and step limit. `scenario_type` remains required metadata in the
+current schema; use the appropriate value for your task without generating
+additional cases. `required_interactions` can require a particular tap or
+text-entry action before success.
 
-Current scenario rules:
+Before spending on discovery, check only what is needed to run it honestly:
 
-- `scenario_id` becomes the pytest parameter ID; keep it unique and descriptive.
-- Use `positive` when the requested behavior should succeed, `negative` when a controlled invalid/unavailable condition should be rejected, and `edge` for a boundary or recovery case. The engineer defines what correct behavior means; Gemini explores the UI path, not product requirements.
-- `goal` tells Gemini what to accomplish. `preconditions` and `cleanup` are descriptive; add matching deterministic setup/teardown when a test depends on them.
-- `required_interactions` prevents visible final text from ending a run too early. A required tap is counted only after the policy accepts an enabled, clickable target and Appium executes it. Use it for required taps or text entry; it is not a general ordered-checkpoint language. Essential device-state changes and app launches also need deterministic fixture checks or independent assertions.
-- `allowed_actions` is the safety allowlist: `tap`, `type_text`, `launch_app`, `scroll_forward`, `scroll_backward`, `press_back`.
-- For `launch_app`, list approved aliases and app IDs in `launchable_apps`. The planner returns an alias such as `youtube`, never an arbitrary package ID. A missing installed app fails at launch.
-- `test_data` contains named values that can be referenced by `type_text`; avoid putting secrets in scenario JSON or evidence.
-- Assertions currently check visible or absent text. `exact: false` means the expected phrase may be part of a longer UI string.
-- `max_steps` bounds model actions (1–50). Set it as low as is reasonable; each step can make a paid model call.
+- Known prerequisites are satisfied, manually or by existing setup. Record any
+  manual preparation; JSON `preconditions` and `cleanup` do not execute it.
+- Assertions prove the requested outcome. Current contract assertions check
+  visible/absent text. Add `"checked": true` or `false` to verify the actual
+  Android toggle state; the text must identify the switch or its immediate row
+  label uniquely. Missing, unreadable or ambiguous controls cannot pass.
+  An optional `resource_id` from observed UI XML can identify a unique switch,
+  with `text` providing screen context. Do not guess the ID.
+  Ordered intermediate states and general long-running waits still need support.
+- You know how to restore state changed by the task, even if this first run
+  needs manual restoration. Automated replay will need deterministic cleanup.
 
-Keep cross-app/device capabilities in `src/agentic_mobile_test/device/`. Keep app-specific scenarios, locators, and UI setup in that app's test feature folder. A new scenario should use existing capabilities where possible; only add shared code when the capability genuinely generalizes.
+Missing verification or action support is a framework gap, not a reason to
+invent more prompt details. Evidence from an incomplete exploration can still
+help you understand the workflow, but it is not a verified regression test.
 
-### YouTube Airplane-mode scenario setup
+A new app can have its own suite folder and scenario files. Executing it also
+requires an appropriate collector and fixtures; the current generator emits the
+Settings fixture. The commands below apply to the implemented Settings suite.
 
-The agentic YouTube test captures and restores the original radio state, starts with mobile data enabled and Wi-Fi/Airplane mode disabled, and checks YouTube is installed before making a paid model call. Appium's reported mobile-data bit can remain set while Airplane mode is on; the offline screen is the application-level oracle. The separate Retry test waits up to 60 seconds for YouTube to expose Retry, then waits for it to be clickable before tapping.
+For verification-only tasks, set `"allow_toggle_changes": false`. The policy
+blocks interaction with observed checkable controls and their clickable rows.
+A uniquely identified toggle in the wrong state ends verification as a failure;
+Gemini must not enable it to make the test pass. This guard relies on Android's
+UI hierarchy, not a guarantee against every possible app-specific state change.
 
-## 3. Start each work session
+The [helper scenario](../../tests/autotests/ui/android_settings/scenarios/artemis_accessibility_helper_enabled.json)
+implements Home → Settings → Accessibility → inspect Artemis Accessibility Helper
+→ Home. Its assertion matches the helper name in a switch label/row; confirm
+that label in the first device run. No locator or navigation sequence is assumed.
+Use filename stem `artemis_accessibility_helper_enabled` and scenario ID
+`artemis-accessibility-helper-enabled` in the commands below.
 
-Start the emulator in Android Studio. In your pytest terminal, enter the
-repository, activate the virtual environment, and confirm the device:
+## 3. Prepare the session and select one task
+
+Complete [first-time setup](../prerequisites.md) once, then start your emulator.
 
 ```sh
 cd /Users/andrewsekar/repos/agentic-mobile-test
 source .venv/bin/activate
 adb devices
-```
+DEVICE_UDID='emulator-5554'
 
-For Gemini discovery, load the key in this same terminal from the ignored
-project-root `.env` file. This does not display the key:
-
-```sh
 set -a
 source .env
 set +a
 test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
 ```
 
-### Appium server: choose one method
+Use the serial reported by `adb devices`. If `.env` is missing, create it with
+`test -f .env || cp .env.example .env`, fill in your key, then load it again.
+An already exported `GEMINI_API_KEY` also works.
 
-**Normal run:** do not start Appium separately. Pytest starts the project-local
-server at `http://127.0.0.1:4725` and stops it when the test finishes.
+Pytest starts Appium at `http://127.0.0.1:4725` when needed and stops the server
+it started. For manual logs, run `npm run appium:start` from this repository in
+a second terminal. If `curl -fsS http://127.0.0.1:4725/status` succeeds, reuse
+that server.
 
-**Manual server:** to see Appium logs, first check whether the default port is
-already serving Appium:
+The following values select the existing About phone task. For a new task,
+replace them with its JSON filename (without extension) and `scenario_id`:
 
 ```sh
-curl -fsS http://127.0.0.1:4725/status
+SCENARIO_STEM='android_settings_about_phone'
+SCENARIO_ID='android-settings-about-phone'
+SCENARIO_FILE="tests/autotests/ui/android_settings/scenarios/${SCENARIO_STEM}.json"
+DISCOVERY_TEST="tests/autotests/ui/android_settings/test_agentic_android_settings.py::test_agentic_android_settings_scenario[${SCENARIO_ID}]"
+
+python -c 'import sys; from pathlib import Path; from agentic_mobile_test.contracts import Scenario; Scenario.load(Path(sys.argv[1])); print("Task contract valid")' "$SCENARIO_FILE"
+pytest --collect-only -q "$DISCOVERY_TEST"
 ```
 
-If it is not ready, open another terminal and run this from the repository
-root:
+Expect one collected test. Neither validation command calls Gemini.
+
+## 4. Let Gemini discover the path
 
 ```sh
-cd /Users/andrewsekar/repos/agentic-mobile-test
-npm run appium:start
-```
-
-Leave that terminal open. Run pytest in the first terminal; it reuses the
-server on port `4725`. If the status check already succeeded, do not start a
-second server on the same port. The key is needed only in the pytest terminal,
-not in the Appium terminal. `npm run appium:start` from `~` fails because npm
-cannot find the repository's `package.json` there.
-
-## 4. Run discovery
-
-First, check the Appium path without spending on Gemini:
-
-```sh
-pytest -m appium \
-  --appium-udid emulator-5554 \
-  --appium-package com.android.settings \
-  --appium-activity .Settings \
-  --appium-no-reset -q
-```
-
-Then run only the scenario whose ID you added (the ID is matched by `-k`):
-
-```sh
-pytest tests/autotests/ui/android_settings/test_agentic_android_settings.py \
-  -m "appium and gemini" \
-  -k youtube-airplane-mode-offline \
+pytest "$DISCOVERY_TEST" \
   --run-gemini \
-  --appium-udid emulator-5554 \
-  --appium-package com.android.settings \
-  --appium-activity .Settings \
+  --appium-udid "$DEVICE_UDID" \
+  --appium-package com.android.settings --appium-activity .Settings \
   --appium-no-reset -q
 ```
 
-Replace the UDID with the value from `adb devices`. The test and manual server
-use port `4725` by default. Gemini tests are skipped unless `--run-gemini` is
-present. The live test limits calls to its scenario step budget, output to 100
-tokens per call, and estimated run cost to `$0.005`; automatic retries are
-disabled.
+Gemini receives the goal, screenshot and current UI elements, selects one
+permitted action, and observes the result after Appium executes it.
+Before each observation, the observer polls every 0.2 seconds and requires
+unchanged screenshot bytes, UI hierarchy, and app/activity for at least 0.6
+seconds. Polling times out after 10 seconds (individual Appium commands retain
+their own transport timeouts). Only the accepted capture goes to Gemini and
+the discovery path; intermediate captures remain local diagnostics.
+This conservative check can time out on continuous animation, video, or a
+spinner. It reports a synchronization failure rather than silently sending an
+unstable frame. It does not replace a test-specific wait for a business result.
+The current discovery test allows up to `max_steps` action requests, 100 output
+tokens per action and $0.005 estimated cost per run, with SDK retries disabled.
+These are local request limits, not a provider billing cap.
 
-## 5. Review discovery evidence
-
-Each run writes under `runs/` (ignored by Git). Find discovery records with:
-
-```sh
-find runs -name discovered-path.json -print
-```
-
-Open the `discovered-path.json` belonging to the matching scenario. Review its sibling `scenario.json`, `steps.jsonl`, `result.json`, screenshots, and UI XML snapshots. Check every action and transition. A passed discovery is evidence for review—not yet an approved regression.
-
-## 6. Generate and promote a regression candidate
-
-Use the run directory that directly contains `discovered-path.json` and the exact scenario JSON used for that run:
+## 5. Review the discovery record
 
 ```sh
-python -m agentic_mobile_test.generation \
-  runs/<run-directory> \
-  --scenario tests/autotests/ui/android_settings/scenarios/youtube_airplane_mode_offline.json
+find runs -name result.json -print
 ```
 
-If a discovered tap target does not uniquely match the reviewed catalog at `tests/autotests/ui/android_settings/targets/android_settings.json`, create a target-map JSON and pass `--target-map path/to/map.json`. Target maps convert discovery step numbers to stable catalog target IDs; review those mappings yourself.
-
-The generator checks that discovery passed, its assertions and scenario still match, evidence hashes are intact, and actions/targets are approved. It writes a `.py.candidate` beside the scenario; pytest does not collect that suffix. Review the generated code, assertions, setup, and cleanup. Only after review, copy/rename it to `.py`, run that test on the emulator, and inspect its evidence. Do not promote a candidate just because generation succeeded.
-
-## What is and is not automatic
-
-Automatic today: scenario collection, Appium session/server lifecycle, Settings-root fixture setup/teardown, the YouTube discovery scenario's network precondition and radio-state restoration, action-policy checks, Gemini action selection, Appium execution, evidence capture, deterministic text verification, reusable bounded UI waits, and review-only candidate generation.
-
-Still engineer-owned: ensuring the emulator has working mobile-data internet, choosing trustworthy pass/fail oracles, reviewing locators and generated code, and deciding whether a discovered path is a suitable regression. The project does not yet accept a plain-English scenario directly from the terminal or automatically author and approve durable tests.
-
-## Session close
-
-After paid model experimentation, review usage and clear the key from this shell:
+Identify the new attempt for your task. Set the directory directly containing
+its `result.json` and successful `discovered-path.json`:
 
 ```sh
-unset GEMINI_API_KEY
+RUN_DIR='runs/replace-with-fixture-directory/replace-with-agent-run-directory'
 ```
 
-Keep run artifacts local. Never commit API keys, generated evidence, or unreviewed candidate files.
+The actual output name is **`discovered-path.json`** within a unique run
+directory. Review it alongside `scenario.json`, `steps.jsonl`, screenshots,
+UI XML, and `lifecycle.json`. Check any task-specific setup/cleanup records in
+the parent directory too.
+
+Require the whole pytest test to pass, including cleanup. The loop can write a
+successful discovery record before later test assertions or teardown fail.
+A failed loop retains diagnostic records but produces no successful path;
+resolve the cause before generating a regression.
+
+Now decide what belongs in the repeatable test from the observed journey:
+
+- **Setup:** state that must already hold before the behavior under test.
+- **Test actions:** the behavior you actually want to exercise.
+- **Assertions:** observable proof of the expected result.
+- **Cleanup:** restoring state, including after a failure.
+
+For “enable alerts and scan,” alerts off is the starting condition; enabling
+them belongs in the test. For “scan with alerts enabled,” alerts on can be setup.
+The same discovered action can have a different role depending on the task.
+Gemini's action trace does not classify these roles for you.
+
+Make necessary preparation repeatable before validating replay. Start with
+task-specific setup; share a fixture when another test needs the same state.
+Keep reusable device operations under `src/agentic_mobile_test/`. If discovery
+reveals that you started from the wrong state, correct it and rediscover rather
+than treating the old path as proof of the intended behavior.
+
+## 6. Generate a replay candidate from that record
+
+Review the recorded tap/type targets and scroll destinations against
+[the target catalog](../../tests/autotests/ui/android_settings/targets/android_settings.json).
+Your coding assistant can use the actual UI XML to add missing stable targets.
+You do not need to prewrite the navigation locators for discovery.
+
+When a recorded locator does not match exactly one catalog target, create a
+reviewed `target-map.json` in the run directory:
+
+```json
+{
+  "schema_version": 1,
+  "step_targets": {
+    "2": "settings.about_device"
+  }
+}
+```
+
+Replace the example with actual discovery step numbers and existing catalog IDs.
+Scroll steps also need a destination; the generator uses a subsequent mapped
+target when possible.
+
+```sh
+CANDIDATE="tests/autotests/ui/android_settings/test_${SCENARIO_STEM}.py.candidate"
+
+python -m agentic_mobile_test.generation "$RUN_DIR" \
+  --scenario "$SCENARIO_FILE" \
+  --target-catalog tests/autotests/ui/android_settings/targets/android_settings.json \
+  --output "$CANDIDATE"
+```
+
+If you created a map, append `--target-map "$RUN_DIR/target-map.json"` to that
+command. Keep the original scenario unchanged. Generation checks recorded
+assertions, selected contract fields, evidence hashes and target mappings; it
+renders Python without calling Gemini. Existing candidates are not overwritten.
+
+## 7. Review and validate the generated replay
+
+Open the `.py.candidate`. Confirm it performs the observed actions and has
+the necessary setup, assertions, waits and cleanup. In particular:
+
+- Generation includes the Settings suite fixture, which honors the scenario's
+  start/cleanup screen checkpoints. Add any other
+  task-specific fixture support used during discovery; it is not copied automatically.
+- Final text verification reads one observation. Add bounded waits for
+  asynchronous results where needed.
+- Manually compare required interactions and test-data values with the approved
+  task; the current recorded contract does not freeze those fields fully.
+
+After review, remove only the `.candidate` suffix, keeping the file beside the
+other Python tests so its relative scenario path remains valid:
+
+```sh
+TEST_FILE="${CANDIDATE%.candidate}"
+if test -e "$TEST_FILE"; then
+  echo "Test exists; review it before replacing: $TEST_FILE"
+else
+  mv "$CANDIDATE" "$TEST_FILE"
+fi
+```
+
+If a test already existed, resolve that review before continuing. Run the
+reviewed generated test:
+
+```sh
+pytest "$TEST_FILE" \
+  --appium-udid "$DEVICE_UDID" \
+  --appium-package com.android.settings --appium-activity .Settings \
+  --appium-no-reset -q
+```
+
+This run uses Appium without Gemini. A passing replay with verified assertions
+and cleanup completes the experiment. Preserve the reviewed test, task contract,
+targets and fixtures together; keep generated evidence and keys local.
+
+Clear the key at session end when finished: `unset GEMINI_API_KEY`.

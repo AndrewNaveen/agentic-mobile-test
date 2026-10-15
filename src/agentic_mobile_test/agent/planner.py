@@ -77,12 +77,15 @@ def _planner_payload(context: PlannerContext) -> Mapping[str, Any]:
         "scenario_type": context.scenario.scenario_type.value,
         "goal": context.scenario.goal,
         "preconditions": context.scenario.preconditions,
+        "allow_toggle_changes": context.scenario.allow_toggle_changes,
         "success_criteria": [
             {
                 "assertion_id": assertion.assertion_id,
                 "text": assertion.text,
                 "exact": assertion.exact,
                 "expectation": assertion.expectation.value,
+                "checked": assertion.checked,
+                "resource_id": assertion.resource_id,
             }
             for assertion in context.scenario.assertions
         ],
@@ -115,6 +118,9 @@ def _planner_payload(context: PlannerContext) -> Mapping[str, Any]:
                 "accessibility_id": element.accessibility_id,
                 "clickable": element.clickable,
                 "enabled": element.enabled,
+                "checked": element.checked,
+                "toggles_state": element.toggles_state,
+                "toggle_labels": element.toggle_labels,
             }
             for element in context.observation.elements
             if element.text or element.accessibility_id
