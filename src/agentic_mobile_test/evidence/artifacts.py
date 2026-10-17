@@ -46,7 +46,7 @@ class RunArtifacts:
         self._write_json(self.run_directory / "result.json", result)
         if result.outcome is RunOutcome.PASSED:
             self._write_json(
-                self.run_directory / "discovered-path.json",
+                self.run_directory / "navigation-path.json",
                 _discovered_path(self.run_directory, self.scenario, result),
             )
 
@@ -89,6 +89,8 @@ def _scenario_record(scenario: Scenario) -> dict[str, Any]:
         "start_screen": scenario.start_screen,
         "cleanup_screen": scenario.cleanup_screen,
         "allow_toggle_changes": scenario.allow_toggle_changes,
+        "required_interactions": scenario.required_interactions,
+        "contract_sha256": scenario.contract_digest(),
     }
 
 
@@ -98,13 +100,43 @@ def _discovered_path(
     result: RunResult,
 ) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "record_type": "successful_ui_path",
-        "generation_status": "candidate_requires_review",
+        "generation_status": "pending_pytest_completion",
         "scenario": _scenario_record(scenario),
         "steps": [_discovered_step(run_directory, step) for step in result.steps],
         "verification": result.final_verification,
     }
+
+
+def finalize_discovery(run_directory: Path, phases: dict[str, str]) -> Path | None:
+    """Publish a navigation record only after pytest's complete lifecycle passes."""
+    run_directory = Path(run_directory)
+    completion_path = run_directory / "completion.json"
+    if completion_path.exists():
+        raise ValueError("This discovery run has already been finalized")
+    result = json.loads((run_directory / "result.json").read_text(encoding="utf-8"))
+    passed = (
+        phases == {"setup": "passed", "call": "passed", "teardown": "passed"}
+        and result.get("outcome") == RunOutcome.PASSED.value
+    )
+    published = None
+    digest = None
+    if passed:
+        navigation = json.loads((run_directory / "navigation-path.json").read_text(encoding="utf-8"))
+        if navigation.get("schema_version") != 2:
+            raise ValueError("Only version 2 navigation records can be finalized")
+        navigation["generation_status"] = "candidate_requires_review"
+        published = run_directory / "discovered-path.json"
+        RunArtifacts._write_json(published, navigation)
+        digest = _file_sha256(published)
+    RunArtifacts._write_json(completion_path, {
+        "schema_version": 1,
+        "phases": phases,
+        "outcome": "passed" if passed else "not_eligible",
+        "discovery_sha256": digest,
+    })
+    return published
 
 
 def _discovered_step(run_directory: Path, step: StepRecord) -> dict[str, Any]:

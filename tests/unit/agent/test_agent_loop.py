@@ -94,15 +94,16 @@ def test_agent_loop_passes_only_after_independent_assertion(tmp_path: Path) -> N
     assert (result.run_directory / "scenario.json").is_file()
     assert (result.run_directory / "steps.jsonl").is_file()
     assert (result.run_directory / "result.json").is_file()
-    assert (result.run_directory / "discovered-path.json").is_file()
+    assert (result.run_directory / "navigation-path.json").is_file()
+    assert not (result.run_directory / "discovered-path.json").exists()
     scenario_artifact = (result.run_directory / "scenario.json").read_text(encoding="utf-8")
     assert "account_password" in scenario_artifact
     assert "do-not-write" not in scenario_artifact
     discovery = json.loads(
-        (result.run_directory / "discovered-path.json").read_text(encoding="utf-8")
+        (result.run_directory / "navigation-path.json").read_text(encoding="utf-8")
     )
     assert discovery["record_type"] == "successful_ui_path"
-    assert discovery["generation_status"] == "candidate_requires_review"
+    assert discovery["generation_status"] == "pending_pytest_completion"
     assert discovery["scenario"]["scenario_type"] == "positive"
     assert discovery["steps"][0]["action"]["target"]["label"] == "About phone"
     assert discovery["steps"][0]["transition"]["screen_changed"] is True
@@ -310,7 +311,7 @@ def test_absence_assertion_fails_when_unwanted_text_is_present(tmp_path: Path) -
         tmp_path,
         sequence=1,
         fingerprint="settings-unexpected-success",
-        elements=(ObservedElement(ref="e001", label="Added successfully"),),
+        elements=(ObservedElement(ref="e001", label="Added successfully", text="Added successfully"),),
     )
 
     result = TextVerifier().evaluate(scenario, observation)

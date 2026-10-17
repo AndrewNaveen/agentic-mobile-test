@@ -12,6 +12,8 @@ from typing import Any
 
 from ..appium.targets import TargetCatalog
 from ..contracts import ActionKind, Scenario
+from ..evidence.artifacts import _jsonable, _scenario_record
+from hashlib import sha256
 
 _SAFE_NAME = re.compile(r"[^a-zA-Z0-9_]+")
 
@@ -58,7 +60,8 @@ def generate_test_candidate(
     if output_path.exists():
         raise TestGenerationError(f"Refusing to overwrite candidate: {output_path}")
 
-    source = _render_test(scenario, scenario_path, output_path, steps)
+    source = _render_test(scenario, scenario_path, output_path, steps,
+                          catalog_path=Path(target_catalog_path))
     try:
         ast.parse(source, filename=str(output_path))
     except SyntaxError as error:
@@ -73,12 +76,19 @@ def _validate_discovery(
     scenario: Scenario,
     run_directory: Path,
 ) -> None:
-    if discovery.get("schema_version") != 1:
-        raise TestGenerationError("Only discovery schema_version 1 is supported")
+    if discovery.get("schema_version") != 2:
+        raise TestGenerationError("Discovery schema_version 2 is required; old records need rediscovery")
     if discovery.get("record_type") != "successful_ui_path":
         raise TestGenerationError("Input is not a successful UI path record")
     if discovery.get("generation_status") != "candidate_requires_review":
         raise TestGenerationError("Discovery record is not marked for human review")
+
+    completion = _read_json(run_directory / "completion.json")
+    if (completion.get("schema_version") != 1 or completion.get("outcome") != "passed"
+        or completion.get("phases") != {"setup": "passed", "call": "passed", "teardown": "passed"}):
+        raise TestGenerationError("Discovery requires successful pytest setup, call and teardown")
+    if completion.get("discovery_sha256") != sha256((run_directory / "discovered-path.json").read_bytes()).hexdigest():
+        raise TestGenerationError("Discovery completion hash mismatch")
 
     recorded_scenario = discovery.get("scenario")
     if not isinstance(recorded_scenario, dict):
@@ -96,6 +106,9 @@ def _validate_discovery(
         raise TestGenerationError("Discovery record has no deterministic assertion checks")
     if any(not isinstance(check, dict) or check.get("passed") is not True for check in checks):
         raise TestGenerationError("Every recorded deterministic assertion must have passed")
+    check_ids = [check.get("assertion_id") for check in checks]
+    if sorted(str(value) for value in check_ids) != sorted(item.assertion_id for item in scenario.assertions):
+        raise TestGenerationError("Verification must cover each scenario assertion exactly once")
 
     steps = discovery.get("steps")
     if not isinstance(steps, list) or len(steps) > scenario.max_steps:
@@ -115,40 +128,32 @@ def _validate_discovery(
             _verify_evidence(run_directory, evidence, "screenshot")
             _verify_evidence(run_directory, evidence, "ui_source")
 
+    for requirement in scenario.required_interactions:
+        count = sum(
+            1 for step in steps
+            if step.get("action", {}).get("name") == requirement.action.value
+            and " ".join(str((step.get("action", {}).get("target") or {}).get("text", "")).casefold().split())
+            == " ".join(requirement.target_text.casefold().split())
+        )
+        if count < requirement.minimum_count:
+            raise TestGenerationError("Discovery does not contain all required interactions")
+
 
 def _scenario_matches(record: dict[str, Any], scenario: Scenario) -> bool:
-    raw_assertions = record.get("assertions")
-    if not isinstance(raw_assertions, list) or any(not isinstance(item, dict) for item in raw_assertions):
-        return False
-    expected_assertions = [
-        {
-            "assertion_id": item.assertion_id,
-            "text": item.text,
-            "exact": item.exact,
-            "expectation": item.expectation.value,
-            "checked": item.checked,
-            "resource_id": item.resource_id,
-        }
-        for item in scenario.assertions
-    ]
-    return (
-        record.get("schema_version") == 1
-        and record.get("scenario_id") == scenario.scenario_id
-        and record.get("scenario_type") == scenario.scenario_type.value
-        and record.get("goal") == scenario.goal
-        and record.get("preconditions") == list(scenario.preconditions)
-        and record.get("cleanup") == list(scenario.cleanup)
-        and [dict({"checked": None, "resource_id": None}, **item)
-             for item in raw_assertions] == expected_assertions
-        and record.get("start_screen", "settings_root") == scenario.start_screen
-        and record.get("cleanup_screen", "settings_root") == scenario.cleanup_screen
-        and record.get("allow_toggle_changes", True) == scenario.allow_toggle_changes
-        and record.get("allowed_actions")
-        == sorted(action.value for action in scenario.allowed_actions)
-        and record.get("launchable_apps") == dict(scenario.launchable_apps)
-        and record.get("test_data_refs") == sorted(scenario.test_data)
-        and record.get("max_steps") == scenario.max_steps
-    )
+    return record == _jsonable(_scenario_record(scenario))
+
+
+def validate_replay_inputs(
+    scenario_path: Path, catalog_path: Path, *, contract_sha256: str,
+    catalog_sha256: str,
+) -> Scenario:
+    """Fail during collection, before fixtures mutate a device, if inputs drift."""
+    scenario = Scenario.load(scenario_path)
+    if scenario.contract_digest() != contract_sha256:
+        raise TestGenerationError("Replay scenario changed; regenerate and review the test")
+    if sha256(catalog_path.read_bytes()).hexdigest() != catalog_sha256:
+        raise TestGenerationError("Replay target catalog changed; regenerate and review the test")
+    return scenario
 
 
 def _verify_evidence(run_directory: Path, evidence: dict[str, Any], kind: str) -> None:
@@ -308,6 +313,7 @@ def _render_test(
     scenario_path: Path,
     output_path: Path,
     steps: list[dict[str, Any]],
+    *, catalog_path: Path,
 ) -> str:
     relative_scenario = Path(os.path.relpath(scenario_path, output_path.parent))
     scenario_literal = json.dumps(relative_scenario.as_posix())
@@ -323,15 +329,22 @@ def _render_test(
         "from agentic_mobile_test.appium.observer import AppiumObserver",
         "from agentic_mobile_test.contracts import Scenario, VerificationState",
         "from agentic_mobile_test.verification.verifier import TextVerifier",
+        "from agentic_mobile_test.generation.candidate import validate_replay_inputs",
         "",
         f"SCENARIO_PATH = Path(__file__).parent / {scenario_literal}",
+        f"TARGET_CATALOG_PATH = Path(__file__).parent / {json.dumps(os.path.relpath(catalog_path.resolve(), output_path.parent))}",
+        "SCENARIO = validate_replay_inputs(",
+        "    SCENARIO_PATH, TARGET_CATALOG_PATH,",
+        f"    contract_sha256={scenario.contract_digest()!r},",
+        f"    catalog_sha256={sha256(catalog_path.read_bytes()).hexdigest()!r},",
+        ")",
         "",
         "",
         "@pytest.mark.appium",
         f"def {test_name}(android_settings_environment: Any) -> None:",
         '    """Replay the reviewed path and assert the fixed scenario oracle."""',
         "    # Arrange: the UI fixture reads this scenario's start/cleanup checkpoints.",
-        "    scenario = Scenario.load(SCENARIO_PATH)",
+        "    scenario = SCENARIO",
         "    device = android_settings_environment.device",
         "",
         "    # Act: replay reviewed semantic actions, never captured ephemeral refs.",

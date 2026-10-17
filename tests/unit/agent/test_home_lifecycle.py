@@ -31,7 +31,8 @@ def test_home_setup_and_cleanup_even_after_test_error(tmp_path, monkeypatch, fai
     monkeypatch.setattr(fixtures.MobileDevice, "create", lambda *args, **kwargs: device)
     scenario = Scenario("home", "Check", (TextAssertion("x", "x"),),
                         start_screen="home", cleanup_screen="home")
-    request = SimpleNamespace(fixturenames=["scenario"], getfixturevalue=lambda name: scenario)
+    request = SimpleNamespace(fixturenames=["scenario"], getfixturevalue=lambda name: scenario,
+                              module=SimpleNamespace(), node=SimpleNamespace())
     lifecycle = fixtures.android_settings_environment.__wrapped__(device.driver, tmp_path, request)
     environment = next(lifecycle)
     assert environment.setup_record["status"] == "ready"
@@ -56,7 +57,8 @@ def test_generated_replay_reads_checkpoints_from_scenario_file(tmp_path, monkeyp
             screenshot=tmp_path / "s.png", ui_source=tmp_path / "s.xml")),
     )
     monkeypatch.setattr(fixtures.MobileDevice, "create", lambda *args, **kwargs: device)
-    request = SimpleNamespace(fixturenames=[], module=SimpleNamespace(SCENARIO_PATH=path))
+    request = SimpleNamespace(fixturenames=[], module=SimpleNamespace(SCENARIO_PATH=path),
+                              node=SimpleNamespace())
     lifecycle = fixtures.android_settings_environment.__wrapped__(device.driver, tmp_path, request)
     next(lifecycle)
     lifecycle.close()

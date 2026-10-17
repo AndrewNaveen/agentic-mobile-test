@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from hashlib import sha256
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,9 @@ class Scenario:
             raise ValueError("A scenario requires an id and goal")
         if not self.assertions:
             raise ValueError("A scenario requires at least one independent assertion")
+        ids = [item.assertion_id for item in self.assertions]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Assertion IDs must be unique")
         if not self.allowed_actions:
             raise ValueError("A scenario must allow at least one action")
         if not 1 <= self.max_steps <= 50:
@@ -119,6 +123,16 @@ class Scenario:
             raise ValueError("max_steps cannot be lower than the required interaction count")
         if any(not item.strip() for item in (*self.preconditions, *self.cleanup)):
             raise ValueError("Scenario preconditions and cleanup entries cannot be empty")
+
+    def contract_digest(self) -> str:
+        """Identify all executable input, including data values, without persisting them.
+
+        A digest detects drift; it is not encryption or a privacy guarantee for
+        low-entropy secrets. Keep run evidence private like the original data.
+        """
+        encoded = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"),
+                             default=lambda value: sorted(value)).encode("utf-8")
+        return sha256(encoded).hexdigest()
 
     @classmethod
     def load(cls, path: Path) -> Scenario:

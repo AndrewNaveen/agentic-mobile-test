@@ -1,5 +1,10 @@
 # One UI task: discover, generate, replay
 
+Not ready to define a test yet? Use the separate [exploratory mode](exploration.md)
+to investigate an isolated app and collect an evidence-backed navigation report.
+It does not require assertions and does not produce a regression test. The steps
+below remain the workflow for a task with a known expected result.
+
 Use a task whose expected behavior you understand. Gemini discovers how to
 perform it through the current UI. Supply the expected result and what you know
 about the starting state; discovery helps reveal the rest.

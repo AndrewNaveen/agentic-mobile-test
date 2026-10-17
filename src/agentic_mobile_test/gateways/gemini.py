@@ -158,6 +158,23 @@ class GeminiGateway:
         payload: Mapping[str, Any],
         screenshot: Path,
     ) -> Mapping[str, Any]:
+        return self._choose(system_instruction=system_instruction, payload=payload,
+                            screenshot=screenshot, response_schema=_ACTION_SCHEMA)
+
+    def choose_exploration(
+        self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path,
+    ) -> Mapping[str, Any]:
+        from copy import deepcopy
+
+        schema = deepcopy(_ACTION_SCHEMA)
+        schema["properties"]["action"]["enum"].extend(["finish", "request_guidance"])
+        return self._choose(system_instruction=system_instruction, payload=payload,
+                            screenshot=screenshot, response_schema=schema)
+
+    def _choose(
+        self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path,
+        response_schema: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         if self._calls >= self.budget.max_calls:
             raise ModelGatewayUnavailableError(
                 f"Gemini call limit reached ({self.budget.max_calls})"
@@ -198,7 +215,7 @@ class GeminiGateway:
                 payload=payload,
                 screenshot=screenshot,
                 max_output_tokens=self.budget.max_output_tokens,
-                response_schema=_ACTION_SCHEMA,
+                response_schema=response_schema,
             )
         except Exception as error:
             raise _unavailable("Gemini action request failed", error) from error

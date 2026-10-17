@@ -11,7 +11,8 @@ from typing import Any
 import pytest
 
 from agentic_mobile_test.generation import TestGenerationError, generate_test_candidate
-from agentic_mobile_test.contracts import ActionKind
+from agentic_mobile_test.contracts import ActionKind, Scenario
+from agentic_mobile_test.evidence.artifacts import _jsonable, _scenario_record
 from agentic_mobile_test.generation.candidate import _render_action
 
 
@@ -41,6 +42,7 @@ def test_generator_refuses_nonpassing_discovery(tmp_path: Path) -> None:
     record = json.loads(record_path.read_text(encoding="utf-8"))
     record["verification"]["checks"][0]["passed"] = False
     record_path.write_text(json.dumps(record), encoding="utf-8")
+    _complete(run_dir)
 
     with pytest.raises(TestGenerationError, match="Every recorded"):
         generate_test_candidate(
@@ -70,6 +72,7 @@ def test_generator_refuses_evidence_hash_mismatch(tmp_path: Path) -> None:
     record = json.loads(record_path.read_text(encoding="utf-8"))
     record["steps"][0]["transition"]["before"]["screenshot_sha256"] = "0" * 64
     record_path.write_text(json.dumps(record), encoding="utf-8")
+    _complete(run_dir)
 
     with pytest.raises(TestGenerationError, match="hash mismatch"):
         generate_test_candidate(
@@ -162,22 +165,10 @@ def _generation_inputs(root: Path) -> tuple[Path, Path, Path]:
         transitions.append(transition)
 
     discovered = {
-        "schema_version": 1,
+        "schema_version": 2,
         "record_type": "successful_ui_path",
         "generation_status": "candidate_requires_review",
-        "scenario": {
-            "schema_version": 1,
-            "scenario_id": scenario["scenario_id"],
-            "scenario_type": scenario["scenario_type"],
-            "goal": scenario["goal"],
-            "preconditions": scenario["preconditions"],
-            "cleanup": scenario["cleanup"],
-            "assertions": scenario["assertions"],
-            "allowed_actions": sorted(scenario["allowed_actions"]),
-            "launchable_apps": scenario["launchable_apps"],
-            "test_data_refs": [],
-            "max_steps": scenario["max_steps"],
-        },
+        "scenario": _jsonable(_scenario_record(Scenario.from_mapping(scenario))),
         "steps": [
             {
                 "sequence": 1,
@@ -211,4 +202,14 @@ def _generation_inputs(root: Path) -> tuple[Path, Path, Path]:
         json.dumps(discovered),
         encoding="utf-8",
     )
+    _complete(run_dir)
     return run_dir, scenario_path, catalog_path
+
+
+def _complete(run_dir: Path) -> None:
+    (run_dir / "completion.json").write_text(json.dumps({
+        "schema_version": 1,
+        "outcome": "passed",
+        "phases": {"setup": "passed", "call": "passed", "teardown": "passed"},
+        "discovery_sha256": hashlib.sha256((run_dir / "discovered-path.json").read_bytes()).hexdigest(),
+    }))

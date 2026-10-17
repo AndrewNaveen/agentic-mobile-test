@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .actions import AppiumActions
+from ..agent.policy import ActionScope
 from ..contracts import (
     ActionKind,
     ExecutionResult,
     Observation,
     PlannedAction,
-    Scenario,
 )
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ class AppiumExecutor:
 
     def execute(
         self,
-        scenario: Scenario,
+        scenario: ActionScope,
         action: PlannedAction,
         observation: Observation,
     ) -> ExecutionResult:

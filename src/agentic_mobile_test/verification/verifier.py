@@ -27,7 +27,7 @@ class TextVerifier:
         visible_values = tuple(
             value
             for element in observation.elements
-            for value in (element.text, element.accessibility_id, element.label)
+            for value in (element.text, element.accessibility_id)
             if value
         )
         checks = tuple(
@@ -82,7 +82,7 @@ class TextVerifier:
                 element.resource_id == assertion.resource_id
                 if assertion.resource_id is not None else
                 any(assertion.text == value if assertion.exact else assertion.text in value
-                    for value in (element.text, element.accessibility_id, element.label, *element.toggle_labels) if value)
+                    for value in (element.text, element.accessibility_id, *element.toggle_labels) if value)
             )
         ]
 

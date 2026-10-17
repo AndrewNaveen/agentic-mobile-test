@@ -124,10 +124,11 @@ def android_settings_environment(
     device = MobileDevice.create(
         driver,
         evidence_dir=evidence_dir,
-        target_catalog=TARGET_CATALOG,
+        target_catalog=getattr(request.module, "TARGET_CATALOG_PATH", TARGET_CATALOG),
         record_successful_actions=True,
     )
     environment = AndroidSettingsEnvironment(device, evidence_dir)
+    request.node._agentic_environment = environment
     if "scenario" in request.fixturenames:
         scenario = request.getfixturevalue("scenario")
     else:

@@ -46,8 +46,9 @@ class AppiumObserver:
         clickable_nodes = _nodes_with_clickable_ancestor(root)
         toggle_targets = _toggle_targets(root)
         parents = {child: parent for parent in root.iter() for child in parent}
+        visible_nodes = _visible_nodes(root)
         for node in nodes:
-            if node.attrib.get("displayed", "true").lower() == "false":
+            if id(node) not in visible_nodes:
                 continue
             text = _attribute(node, "text")
             accessibility_id = _attribute(node, "content-desc")
@@ -84,7 +85,7 @@ class AppiumObserver:
                     ),
                     toggles_state=id(node) in toggle_targets,
                     checkable=_boolean_attribute(node, "checkable"),
-                    toggle_labels=_toggle_labels(node, parents),
+                    toggle_labels=_toggle_labels(node, parents, visible_nodes),
                     locator_strategy=strategy,
                     locator_value=locator,
                 )
@@ -251,6 +252,7 @@ def _toggle_targets(root: ElementTree.Element) -> set[int]:
 
 def _toggle_labels(
     node: ElementTree.Element, parents: dict[ElementTree.Element, ElementTree.Element],
+    visible_nodes: set[int],
 ) -> tuple[str, ...]:
     """Associate a switch with labels in its immediate row, never the whole page."""
     if not _boolean_attribute(node, "checkable"):
@@ -261,8 +263,24 @@ def _toggle_labels(
     return tuple(dict.fromkeys(
         value for child in parent.iter()
         for value in (_attribute(child, "text"), _attribute(child, "content-desc"))
-        if value and child.attrib.get("displayed", "true") != "false"
+        if value and id(child) in visible_nodes
     ))
+
+
+def _visible_nodes(root: ElementTree.Element) -> set[int]:
+    """A hidden ancestor hides its entire subtree, even without child attributes."""
+    visible: set[int] = set()
+
+    def visit(node: ElementTree.Element) -> None:
+        if any(node.attrib.get(name, "true").lower() == "false"
+               for name in ("displayed", "visible")):
+            return
+        visible.add(id(node))
+        for child in node:
+            visit(child)
+
+    visit(root)
+    return visible
 
 
 def _boolean_attribute(

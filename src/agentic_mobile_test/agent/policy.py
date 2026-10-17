@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from ..contracts import ActionKind, Observation, PlannedAction, Scenario, StepRecord
+from typing import Mapping, Protocol
+
+from ..contracts import ActionKind, Observation, PlannedAction, StepRecord
+
+
+class ActionScope(Protocol):
+    """Shared execution permissions; exploration does not need test assertions."""
+
+    max_steps: int
+    allowed_actions: frozenset[ActionKind]
+    allow_toggle_changes: bool
+    test_data: Mapping[str, str]
+    launchable_apps: Mapping[str, str]
 
 
 class PolicyViolation(ValueError):
@@ -18,7 +30,7 @@ class ActionPolicy:
     def validate(
         self,
         *,
-        scenario: Scenario,
+        scenario: ActionScope,
         action: PlannedAction,
         observation: Observation,
         history: tuple[StepRecord, ...],

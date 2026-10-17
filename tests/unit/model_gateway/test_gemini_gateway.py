@@ -63,6 +63,18 @@ def test_gateway_stops_at_call_limit(tmp_path: Path) -> None:
     assert gateway.usage.calls == 2
 
 
+def test_exploration_schema_is_separate_but_budget_is_shared(tmp_path: Path) -> None:
+    transport = _Transport(input_tokens=10)
+    gateway = GeminiGateway(transport, budget=GeminiBudget(max_calls=2))
+    arguments = dict(system_instruction="Explore", payload={}, screenshot=_screenshot(tmp_path))
+    gateway.choose_exploration(**arguments)
+    assert "finish" in transport.request["response_schema"]["properties"]["action"]["enum"]
+    gateway.choose_action(**arguments)
+    assert "finish" not in transport.request["response_schema"]["properties"]["action"]["enum"]
+    with pytest.raises(ModelGatewayUnavailableError, match="call limit"):
+        gateway.choose_exploration(**arguments)
+
+
 def test_gateway_stops_before_request_when_cost_would_exceed_limit(
     tmp_path: Path,
 ) -> None:
