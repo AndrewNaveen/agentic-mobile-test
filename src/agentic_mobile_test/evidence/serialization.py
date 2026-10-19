@@ -18,5 +18,3 @@ def _jsonable(value: Any) -> Any:
         converted = [_jsonable(item) for item in value]
         return sorted(converted) if isinstance(value, (set, frozenset)) else converted
     return value
-
-
