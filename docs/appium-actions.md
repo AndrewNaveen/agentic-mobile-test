@@ -1,7 +1,7 @@
 # Appium action layer
 
 `AppiumActions` contains deterministic touchscreen operations for pytest tests.
-It does not decide what a test should do. `StructuredPlanner` proposes one
+It does not decide what a test should do. `ExplorationPlanner` proposes one
 semantic action, `ActionPolicy` validates it, and `AppiumExecutor` maps it to an
 existing method here. The planner never receives or supplies the Appium
 locator.

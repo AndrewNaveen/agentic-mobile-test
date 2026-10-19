@@ -14,6 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from ..contracts import Observation, ObservedElement
 from .actions import AppiumActions
+from .hierarchy import compact_xml, scoped_button_locator, structural_button_locator
 
 
 class ObservationError(RuntimeError):
@@ -42,6 +43,7 @@ class AppiumObserver:
         resource_id_counts = Counter(_attribute(node, "resource-id") for node in nodes)
         text_counts = Counter(_attribute(node, "text") for node in nodes)
         elements: list[ObservedElement] = []
+        targets: dict[int, ObservedElement] = {}
 
         clickable_nodes = _nodes_with_clickable_ancestor(root)
         toggle_targets = _toggle_targets(root)
@@ -67,6 +69,14 @@ class AppiumObserver:
                 resource_id_counts=resource_id_counts,
                 text_counts=text_counts,
             )
+            if locator is None:
+                locator = scoped_button_locator(node, parents, visible_nodes, text_counts)
+                if locator is not None:
+                    strategy = "xpath"
+            if locator is None:
+                locator = structural_button_locator(node, parents, visible_nodes, text_counts)
+                if locator is not None:
+                    strategy = "xpath"
             elements.append(
                 ObservedElement(
                     ref=f"e{len(elements) + 1:03d}",
@@ -90,6 +100,7 @@ class AppiumObserver:
                     locator_value=locator,
                 )
             )
+            targets[id(node)] = elements[-1]
 
         fingerprint = _fingerprint(app_package, activity, elements)
         return Observation(
@@ -100,6 +111,7 @@ class AppiumObserver:
             elements=tuple(elements),
             app_package=app_package,
             activity=activity,
+            compact_xml=compact_xml(root, visible_nodes, targets),
         )
 
     def _settled_capture(self) -> tuple[Any, ElementTree.Element, str | None, str | None]:

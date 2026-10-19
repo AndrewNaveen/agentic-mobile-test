@@ -27,3 +27,7 @@ markers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentic_mobile_test"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/agentic_mobile_test/prompts/exploration.md" = "agentic_mobile_test/prompts/exploration.md"
+"src/agentic_mobile_test/prompts/completion.md" = "agentic_mobile_test/prompts/completion.md"

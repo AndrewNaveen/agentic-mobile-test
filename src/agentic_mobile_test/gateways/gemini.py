@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from ..agent.planner import ModelGatewayUnavailableError, PlannerResponseError
+from ..agent.protocol import ModelBudgetExhaustedError, ModelGatewayUnavailableError, PlannerResponseError
 
 _ACTION_SCHEMA: Mapping[str, Any] = {
     "type": "object",
@@ -87,6 +87,7 @@ class GeminiGatewayUsage:
     input_tokens: int
     output_tokens: int
     estimated_cost_usd: Decimal
+    unaccounted_calls: int = 0
 
 
 class GeminiTransport(Protocol):
@@ -96,7 +97,7 @@ class GeminiTransport(Protocol):
         model: str,
         system_instruction: str,
         payload: Mapping[str, Any],
-        screenshot: Path,
+        screenshot: Path | tuple[Path, ...],
     ) -> int: ...
 
     def generate_action(
@@ -105,7 +106,7 @@ class GeminiTransport(Protocol):
         model: str,
         system_instruction: str,
         payload: Mapping[str, Any],
-        screenshot: Path,
+        screenshot: Path | tuple[Path, ...],
         max_output_tokens: int,
         response_schema: Mapping[str, Any],
     ) -> GeminiModelResponse: ...
@@ -125,24 +126,29 @@ class GeminiGateway:
         self._calls = 0
         self._input_tokens = 0
         self._output_tokens = 0
+        self._unaccounted_calls = 0
 
     @classmethod
     def from_environment(
         cls,
         *,
         budget: GeminiBudget = GeminiBudget(),
+        request_timeout_ms: int = 30_000,
     ) -> "GeminiGateway":
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
         if not api_key:
             raise ModelGatewayUnavailableError(
                 "GEMINI_API_KEY is not set; the paid model experiment was not started"
             )
-        return cls(_GoogleGenAITransport(api_key), budget=budget)
+        if type(request_timeout_ms) is not int or not 0 < request_timeout_ms <= 60_000:
+            raise ValueError("Request timeout must be between 1 and 60000 milliseconds")
+        return cls(_GoogleGenAITransport(api_key, request_timeout_ms=request_timeout_ms), budget=budget)
 
     @property
     def usage(self) -> GeminiGatewayUsage:
         return GeminiGatewayUsage(
             calls=self._calls,
+            unaccounted_calls=self._unaccounted_calls,
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
             estimated_cost_usd=self._cost(
@@ -151,35 +157,32 @@ class GeminiGateway:
             ),
         )
 
-    def choose_action(
-        self,
-        *,
-        system_instruction: str,
-        payload: Mapping[str, Any],
-        screenshot: Path,
-    ) -> Mapping[str, Any]:
-        return self._choose(system_instruction=system_instruction, payload=payload,
-                            screenshot=screenshot, response_schema=_ACTION_SCHEMA)
-
     def choose_exploration(
-        self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path,
+        self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path | tuple[Path, ...],
     ) -> Mapping[str, Any]:
         from copy import deepcopy
+        from ..agent.investigation import PROPOSAL_SCHEMA, REVIEW_SCHEMA
 
         schema = deepcopy(_ACTION_SCHEMA)
-        schema["properties"]["action"]["enum"].extend(["finish", "request_guidance"])
+        schema["properties"]["action"]["enum"].extend(["propose", "review", "finish", "request_guidance"])
+        for name, shape in (("proposal", PROPOSAL_SCHEMA), ("review", REVIEW_SCHEMA)):
+            schema["properties"][name] = {"anyOf": [{"type": "null"}, shape]}
+            schema["required"].append(name)
         return self._choose(system_instruction=system_instruction, payload=payload,
                             screenshot=screenshot, response_schema=schema)
 
     def _choose(
-        self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path,
+        self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path | tuple[Path, ...],
         response_schema: Mapping[str, Any],
     ) -> Mapping[str, Any]:
+        if self._unaccounted_calls:
+            raise ModelGatewayUnavailableError("Previous request usage is unknown; refusing further requests")
         if self._calls >= self.budget.max_calls:
-            raise ModelGatewayUnavailableError(
+            raise ModelBudgetExhaustedError(
                 f"Gemini call limit reached ({self.budget.max_calls})"
             )
-        if not screenshot.is_file():
+        images = screenshot if isinstance(screenshot, tuple) else (screenshot,)
+        if not images or any(not path.is_file() for path in images):
             raise ModelGatewayUnavailableError(
                 f"Planner screenshot is unavailable: {screenshot}"
             )
@@ -201,13 +204,14 @@ class GeminiGateway:
             self._output_tokens + self.budget.max_output_tokens,
         )
         if projected_cost > self.budget.max_cost_usd:
-            raise ModelGatewayUnavailableError(
+            raise ModelBudgetExhaustedError(
                 "Gemini cost limit would be exceeded: "
                 f"projected ${projected_cost:.6f}, "
                 f"limit ${self.budget.max_cost_usd:.6f}"
             )
 
         self._calls += 1
+        self._unaccounted_calls += 1
         try:
             response = self.transport.generate_action(
                 model=self.budget.model,
@@ -222,6 +226,7 @@ class GeminiGateway:
 
         self._input_tokens += response.usage.input_tokens
         self._output_tokens += response.usage.output_tokens
+        self._unaccounted_calls -= 1
         if not isinstance(response.value, Mapping):
             raise PlannerResponseError("Gemini response must be a JSON object")
         return dict(response.value)
@@ -233,11 +238,17 @@ class GeminiGateway:
             + Decimal(output_tokens) * self.budget.output_usd_per_million_tokens
         ) / million
 
+    def review_completion(self, *, system_instruction, payload, screenshots):
+        from ..agent.completion import COMPLETION_SCHEMA
+
+        return self._choose(system_instruction=system_instruction, payload=payload,
+                            screenshot=tuple(screenshots), response_schema=COMPLETION_SCHEMA)
+
 
 class _GoogleGenAITransport:
     """Small SDK boundary configured for one attempt and structured JSON."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, *, request_timeout_ms: int = 30_000) -> None:
         try:
             from google import genai
             from google.genai import types
@@ -251,7 +262,7 @@ class _GoogleGenAITransport:
         self._client = genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(
-                timeout=30_000,
+                timeout=request_timeout_ms,
                 # attempts includes the initial request, so 1 means no retries.
                 retry_options=types.HttpRetryOptions(attempts=1),
             ),
@@ -263,7 +274,7 @@ class _GoogleGenAITransport:
         model: str,
         system_instruction: str,
         payload: Mapping[str, Any],
-        screenshot: Path,
+        screenshot: Path | tuple[Path, ...],
     ) -> int:
         response = self._client.models.count_tokens(
             model=model,
@@ -285,7 +296,7 @@ class _GoogleGenAITransport:
         model: str,
         system_instruction: str,
         payload: Mapping[str, Any],
-        screenshot: Path,
+        screenshot: Path | tuple[Path, ...],
         max_output_tokens: int,
         response_schema: Mapping[str, Any],
     ) -> GeminiModelResponse:
@@ -323,21 +334,19 @@ class _GoogleGenAITransport:
     def _contents(
         self,
         payload: Mapping[str, Any],
-        screenshot: Path,
+        screenshot: Path | tuple[Path, ...],
         *,
         prefix: str | None = None,
     ) -> list[Any]:
-        mime_type = _image_mime_type(screenshot)
         contents: list[Any] = []
         if prefix:
             contents.append(prefix)
-        contents.extend([
-            json.dumps(payload, sort_keys=True, separators=(",", ":")),
-            self._types.Part.from_bytes(
-                data=screenshot.read_bytes(),
-                mime_type=mime_type,
-            ),
-        ])
+        contents.append(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        images = screenshot if isinstance(screenshot, tuple) else (screenshot,)
+        for index, path in enumerate(images):
+            contents.append(f"Evidence screenshot {index}")
+            contents.append(self._types.Part.from_bytes(
+                data=path.read_bytes(), mime_type=_image_mime_type(path)))
         return contents
 
 

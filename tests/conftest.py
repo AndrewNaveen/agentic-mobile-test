@@ -114,31 +114,6 @@ def pytest_collection_modifyitems(
             item.add_marker(skip)
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: Any) -> Any:
-    """Commit discovery eligibility after all fixture teardown has completed."""
-    outcome = yield
-    report = outcome.get_result()
-    phases = getattr(item, "_agentic_phases", {})
-    phases[report.when] = "xfailed" if getattr(report, "wasxfail", None) else report.outcome
-    item._agentic_phases = phases
-    environment = getattr(item, "_agentic_environment", None)
-    result = getattr(environment, "result", None)
-    if report.when != "teardown" or result is None or result.run_directory is None:
-        return
-    from agentic_mobile_test.evidence.artifacts import finalize_discovery
-
-    try:
-        published = finalize_discovery(result.run_directory, phases)
-    except Exception as error:
-        report.outcome = "failed"
-        report.longrepr = f"Unable to finalize discovery: {type(error).__name__}: {error}"
-        return
-    reporter = item.config.pluginmanager.getplugin("terminalreporter")
-    if published is not None and reporter is not None:
-        reporter.write_line(f"Discovery JSON generated: {published.resolve()}")
-
-
 @pytest.fixture(scope="session")
 def appium_config(pytestconfig: pytest.Config) -> AppiumTestConfig:
     udid = pytestconfig.getoption("appium_udid")

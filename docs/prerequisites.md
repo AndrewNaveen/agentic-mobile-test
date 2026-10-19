@@ -1,106 +1,137 @@
-# First-Time Prerequisites
+# Installation (macOS / Android)
 
-Complete this page once per machine. For the commands to repeat at the start
-of each session, use [Working with the project](workflow/README.md).
-
-> Important: run every `npm` and `pytest` command from the repository root.
-> They use this project's `package.json`, lockfile, Python environment, and
-> configuration. If your shell prompt shows `~`, first run `cd` to the repo.
+Start in your cloned repository. These instructions cover the macOS development setup; other operating systems have not been validated end-to-end. Reuse existing working installations.
 
 ```sh
-cd /Users/andrewsekar/repos/agentic-mobile-test
+git clone https://github.com/AndrewNaveen/agentic-mobile-test.git
+cd agentic-mobile-test
 ```
 
-## 1. Install system tools
+For daily use, follow the [workflow](workflow/README.md).
 
-Install Python 3.11+, Node.js, Android Studio, and Android SDK Platform-Tools.
-In Android Studio's SDK Manager, install the Android SDK Platform and Android
-Emulator. Create and start an Android virtual device. Verify it is visible:
+## 1. Check installed system tools
 
 ```sh
-adb devices
+cd "$(git rev-parse --show-toplevel)"
+python3.11 --version
+node --version
+npm --version
+ls -d "/Applications/Android Studio.app"
+$HOME/Library/Android/sdk/emulator/emulator -list-avds
 ```
 
-On macOS, the default SDK and Java paths used by this project are:
+Previously exercised: Python 3.11.4, Node 26.9.0, npm 11.19.1, AVD Pixel_10_Pro.
+The installed Appium package declares Node `^20.19.0 || ^22.12.0 || >=24.0.0`
+and npm `>=10`.
 
-- Android SDK: `$HOME/Library/Android/sdk`
-- Java: `/Applications/Android Studio.app/Contents/jbr/Contents/Home`
+If tools are missing, install only the missing items. With Homebrew already installed:
 
-If your installation differs, set `ANDROID_HOME` and `JAVA_HOME` in your shell
-before running Appium. Ensure `adb`, `node`, and `npm` are on `PATH`.
+```sh
+brew install python@3.11 node
+brew install --cask android-studio
+```
+
+These commands change system software; they are not daily startup commands.
+Launch Android Studio, complete SDK installation, then use SDK Manager to install
+Android SDK Platform-Tools, Android Emulator and an Android system image.
+In Device Manager create a Pixel AVD if none exists. Existing local AVD:
+`Pixel_10_Pro`. Docker is optional and needed only for the Home Assistant example.
+
+For each terminal using adb:
+
+```sh
+export ANDROID_HOME=$HOME/Library/Android/sdk
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+adb version
+```
+
+The project Appium wrapper selects Android Studio's bundled Java automatically
+unless JAVA_HOME is already set. Its expected path is:
+
+```sh
+"/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java" -version
+```
 
 ## 2. Install Python dependencies
 
-From the repository root:
+Create the environment **only if .venv does not exist**:
 
 ```sh
-python3 -m venv .venv
+cd "$(git rev-parse --show-toplevel)"
+test -d .venv || python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -e '.[dev,appium,gemini]'
-pytest
+python -m pip check
+python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The Gemini SDK is installed here, but tests still do not call Gemini unless you
-explicitly opt in with `--run-gemini`.
+Collection does not start Docker, an emulator, Appium or a model request.
+Do not use a global pytest executable; `python -m pytest` uses the activated Python.
 
-## 3. Install the project-local Appium server
-
-Do not install or invoke a global `appium` command. From the repository root:
+## 3. Install project-local Appium and its Android driver
 
 ```sh
+cd "$(git rev-parse --show-toplevel)"
 npm ci
+npm run appium:drivers
+```
+
+If UiAutomator2 is absent:
+
+```sh
 npm run appium:setup
+```
+
+Then verify:
+
+```sh
+npm run appium:drivers
 npm run appium:doctor
 ```
 
-`npm ci` installs the pinned Appium server from `package-lock.json`.
-`appium:setup` installs the pinned UiAutomator2 driver under `.appium-home`,
-and `appium:doctor` checks Android driver prerequisites. These commands must
-run inside the project. Running them from your home directory (`mac:~`) caused
-the pasted `ENOENT` errors because npm could not find this repo's
-`package.json` or lockfile.
+Pinned server: Appium 3.7.0. Driver: UiAutomator2 8.7.0.
+Both use this project's `.appium-home`, not a global driver directory.
+Fix required doctor checks before running tests. Do not reinstall an already
+installed driver every session.
 
-## 4. Set up Gemini once (optional; paid API)
+## 4. Create the Gemini key file once
 
-1. Create a Gemini API key in Google AI Studio and enable billing for its
-   project. Keep prepaid auto-reload off; billing dashboards and spend limits
-   can take time to update.
-2. Create a local key file from the safe template:
+Obtain a Gemini API key for your selected Google AI Studio project. Confirm that
+project's billing and spending controls before paid experiments. Model selection
+comes from the request configuration, not a billing dashboard filter.
 
-   ```sh
-   test -f .env || cp .env.example .env
-   ```
-
-   Edit `.env` and set `GEMINI_API_KEY=your_key_here`. `.env` is ignored by
-   Git. Never commit, print, or paste the key into chat or logs. The framework
-   only uses the key when a Gemini test is explicitly enabled.
-3. The request model and per-run call/token/cost limits are configured in the
-   gateway and test. The billing page's model selector only filters reports; it
-   does not set the model used by the code.
-
-To use a different key-storage method, export `GEMINI_API_KEY` directly in the
-terminal running pytest. See the workflow guide for the safe per-session export
-command and current experiment limits.
-
-## 5. Start Appium manually (optional)
-
-The pytest fixture can start and stop the local Appium server automatically.
-For visible server logs or debugging, check the default port first:
+Create the file without overwriting an existing one:
 
 ```sh
-curl -fsS http://127.0.0.1:4725/status
+cd "$(git rev-parse --show-toplevel)"
+test -f .env || cp .env.example .env
+chmod 600 .env
+open -e .env
 ```
 
-If it is not already ready, run this from the repository root and leave that
-terminal open:
+In the editor, set `GEMINI_API_KEY=your_actual_key` and save. Do not paste the key
+into chat, commit it, or use a command that prints it. Verify Git ignores the file:
 
 ```sh
-cd /Users/andrewsekar/repos/agentic-mobile-test
-npm run appium:start
+git check-ignore .env
 ```
 
-This starts the project's local Appium on `http://127.0.0.1:4725`; run pytest
-from a second terminal in the repository. Pytest reuses the server. Do not try
-to start a second copy on the same port. The `npm run appium:start` command
-fails from `~` because npm searches the current directory for `package.json`.
+Expected output: `.env`. Load it in each terminal before paid exploration:
+
+```sh
+set -a
+source .env
+set +a
+test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
+```
+The framework does not automatically load .env.
+
+Use the session runbook to make an explicitly enabled exploration run.
+See [gateway reference](model-gateway.md) for limits.
+
+## 5. Choose your investigation
+
+Use the [general workflow](workflow/README.md), or the separate
+[Home Assistant demo guide](examples/home-assistant/README.md) for Docker,
+server onboarding, app setup and the exact exploration command.

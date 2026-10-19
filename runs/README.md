@@ -1,19 +1,11 @@
-# Local agent run evidence
+# Local evidence
 
-The agent loop writes one directory per attempt:
+Exploration writes `exploration/<run-id>/` containing brief.json, exploration.json,
+report.md, actions.jsonl, system-prompt.md, completion-prompt.md and numbered
+screens with PNG/XML evidence. exploration.json includes completion reviews,
+their gaps, the original exploration stop, separate exploration/review usage,
+and the combined estimated cost. A terminal review never restarts exploration.
+The terminal prints the report path. Partial and rejected attempts are retained.
+Completion is not a product verdict. Cleanup is currently manual.
 
-```text
-<run-id>/
-  scenario.json   # Goal, assertions, limits, and test-data reference names
-  steps.jsonl     # Planned actions, observations, and normalized execution results
-  result.json     # Pass, product failure, test failure, or blocked outcome
-  discovered-path.json # Passed path candidate for human-reviewed regression generation
-  lifecycle.json  # Settings fixture setup and cleanup checkpoints
-```
-
-Screenshots and Appium UI-source files are referenced from the step records. Run
-output is ignored by Git. Test-data values are never written to the scenario
-or discovery artifacts. `discovered-path.json` is written only after every
-declared assertion passes; it contains observed targets, candidate locators,
-before/after evidence paths and hashes, and verifier results. It requires human
-review and is not generated pytest code.
+All run output except this README is ignored by Git and may contain private data.

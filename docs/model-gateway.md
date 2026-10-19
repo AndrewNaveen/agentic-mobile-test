@@ -1,137 +1,34 @@
-# Model Gateway Reference
+# Model gateway reference
 
-For the complete start-to-finish project workflow, including scenario authoring,
-emulator/Appium setup, Gemini discovery, and candidate generation, see the
-[working guide](workflow/README.md). This page is the deeper reference for
-Gemini configuration, cost controls, and gateway behavior.
+Start with the [workflow](workflow/README.md); installation and key setup are
+in [prerequisites](prerequisites.md).
 
-This guide records Gemini's safety limits and gateway behavior. For the
-repeat-every-session commands, use the [working guide](workflow/README.md);
-first-time key and billing setup is in [prerequisites](prerequisites.md).
-Deterministic regression tests do not require Gemini.
+`GeminiGateway.choose_exploration` is the active model entry point. It returns
+structured actions or investigation notes; it cannot execute Appium itself.
+The only retained runner is exploration; no provider smoke test remains.
 
-## Current Status
+## Implemented limits
 
-- Google AI Studio project: the project selected for this API key
-- Billing: Prepay with auto-reload disabled
-- Intended model: `gemini-3.5-flash-lite`
-- Local key file: `.env` (ignored by Git)
-- Gemini gateway: implemented with offline contract tests
+`GeminiBudget` currently defaults to model `gemini-3.5-flash-lite`, 10 calls,
+200 output tokens per response and an estimated $0.02 ceiling.
+The exploration pytest entry point overrides calls with the brief's
+`max_steps` and output tokens with 600. The example has 15 decisions.
+Exploration has its own $0.02 estimate. Final review has a separate one-call,
+1000-output-token, $0.02 allowance: $0.04 combined estimated ceiling per run.
+Review is attempted once after any handled stop when screen evidence exists,
+including exploration budget exhaustion. Its token preflight includes all saved
+screenshots/XML. Review cannot restart exploration or override an error/budget stop.
+Oversized input, malformed output or provider failure records review_unavailable;
+there are no automatic retries. HTTP timeout is 30 seconds for exploration and
+60 seconds for the larger multi-screenshot review request, not a whole-run deadline.
+Failed requests with unknown usage are counted under unaccounted_calls; their
+possible charges are excluded from the recorded estimate, not assumed to be zero.
+That gateway refuses further requests when usage is unknown.
 
-## One-Time Google Setup
+Token preflight and configured price estimates bound requests. SDK automatic
+retries are disabled. Provider errors stop the run; do not add billing workarounds.
+These controls are not a provider-enforced dollar cap. Verify configured prices
+when changing models. Do not infer account billing status from this repository.
 
-1. Create a Gemini API key in Google AI Studio.
-2. Use Prepay billing and keep auto-reload off.
-3. Optionally set a small project monthly spend cap on the AI Studio **Spend**
-   page. Billing enforcement can lag, so this is not the only safeguard.
-4. Never commit, print, paste, or log the API key.
-
-The model is selected in each API request, not on the billing page. The billing
-page's model selector only filters cost reporting.
-
-## Load the Key in a New Pytest Terminal
-
-From the repository root:
-
-```bash
-cd /Users/andrewsekar/repos/agentic-mobile-test
-source .venv/bin/activate
-
-set -a
-source .env
-set +a
-test -n "$GEMINI_API_KEY" && echo "Gemini key loaded"
-```
-
-Do not run `echo "$GEMINI_API_KEY"`. The export lasts only for the current
-terminal. A new terminal requires repeating these steps.
-
-This export lasts only for the current terminal. Do not run
-`echo "$GEMINI_API_KEY"`. Confirm the emulator before a live mobile run:
-
-```bash
-adb devices
-```
-
-Run normal offline checks with:
-
-```bash
-pytest
-```
-
-The SDK is installed during the one-time setup in [prerequisites](prerequisites.md).
-Normal pytest never calls Gemini. The connection experiment requires both its
-marker and the explicit paid-request option:
-
-```bash
-pytest -m gemini --run-gemini
-```
-
-## Gateway Safety Contract
-
-The `GeminiGateway` enforces:
-
-- model fixed by default to `gemini-3.5-flash-lite`;
-- at most 10 model calls per run;
-- at most 200 output tokens per call;
-- a small estimated per-run cost limit, initially `$0.02`;
-- no automatic retries;
-- immediate stop on authentication, quota, billing, or schema errors;
-- redacted logs that never contain credentials or sensitive entered text;
-- a strict structured response containing one proposed action.
-
-These defaults are implemented in `GeminiBudget`. The dollar value is a local
-estimate based on configured token prices, not a replacement for Google billing
-controls. The Android Settings live test overrides these defaults with its
-scenario step limit, 100 output tokens per call, and a `$0.005` estimated run
-limit. Update the prices when the selected model's published pricing changes.
-
-The gateway only communicates with Gemini. It does not execute Appium actions,
-change assertions, or determine the verdict.
-
-## Intended Runtime Flow
-
-```text
-Appium observation (screenshot + compact element list)
-                         ↓
-                 StructuredPlanner
-                         ↓
-                  GeminiGateway
-                         ↓
-             tap / scroll / finish proposal
-                         ↓
-                  ActionPolicy
-                         ↓
-           AppiumExecutor → AppiumActions
-                         ↓
-             deterministic verification
-```
-
-Send only the current screenshot, compact observed elements, a short recent
-action summary, and the remaining step budget. Do not repeatedly send complete
-UI XML, old screenshots, source code, or full logs.
-
-## Billing and Error Expectations
-
-- `429 RESOURCE_EXHAUSTED`: quota or rate limit reached. Stop the run; do not
-  add an unbounded retry loop.
-- `402 Payment Required`: prepaid credit is exhausted. Stop until credits are
-  deliberately added.
-- `$0` prepaid balance: Gemini API calls stop. They do not fall back to the free
-  tier.
-- Auto-reload off: Google should not automatically purchase more credits.
-- Billing and spend-cap enforcement can lag by roughly ten minutes, so local
-  call and cost limits remain mandatory.
-
-## End of a Session
-
-Review AI Studio usage when a live experiment was run. Close the terminal or
-remove the key from the current shell:
-
-```bash
-unset GEMINI_API_KEY
-```
-
-Keep generated evidence under `runs/`; do not commit it. Record the selected
-model, model-call count, token usage, estimated cost, scenario version, and
-final outcome for every model-backed run.
+Keys belong only in the ignored .env/environment. Never print them. Evidence may
+contain sensitive UI content and is not automatically redacted.
