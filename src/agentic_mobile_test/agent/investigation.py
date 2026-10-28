@@ -28,12 +28,13 @@ REVIEW_SCHEMA = {
 def record_investigation(response: Mapping[str, Any], report: dict, references: Mapping[str, str]) -> str:
     """Validate provenance/trace links; semantic truth still requires human review."""
     required = {"action", "target_ref", "value_ref", "reason", "expected_effect"}
-    if not required <= set(response) or set(response) - required - {"proposal", "review"}:
+    optional = {"proposal", "review", "target_percent", "start_percent", "end_percent"}
+    if not required <= set(response) or set(response) - required - optional:
         raise PlannerResponseError("Invalid investigation response fields")
     if any(not isinstance(response[key], str) or not response[key].strip()
            for key in ("reason", "expected_effect")):
         raise PlannerResponseError("Investigation requires reason and expected_effect")
-    for field in ("target_ref", "value_ref"):
+    for field in ("target_ref", "value_ref", "target_percent", "start_percent", "end_percent"):
         if response.get(field) is not None:
             raise PlannerResponseError("Investigation notes cannot execute UI targets")
     action = response["action"]

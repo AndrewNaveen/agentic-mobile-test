@@ -5,6 +5,52 @@ from xml.etree import ElementTree as ET
 
 from ..contracts import ObservedElement
 
+SLIDER_CLASSES = {"android.widget.SeekBar", "XCUIElementTypeSlider"}
+
+
+def scoped_slider_locator(node, parents, visible, counts: dict[str, Counter]) -> str | None:
+    """Resolve sliders through unique identifiers or bounded container anchors.
+
+    Duplicate IDs are common in WebViews. Keep uniqueness guards in the XPath;
+    never fall back to an ordinal or a stored screen coordinate.
+    """
+    class_name = node.get("class") or node.get("type") or node.tag
+    if class_name not in SLIDER_CLASSES:
+        return None
+    class_attribute = "class" if node.get("class") else "type"
+    predicate = f"@{class_attribute}={xpath_literal(class_name)}"
+    for attribute in ("resource-id", "content-desc", "text", "name"):
+        value = node.get(attribute, "").strip()
+        if value and counts[attribute][value] == 1:
+            match = f"//*[{predicate} and @{attribute}={xpath_literal(value)}]"
+            return f"{match}[count({match})=1]"
+
+    container = parents.get(node)
+    for _ in range(4):
+        if container is None:
+            break
+        for anchor_node in [container, *list(container)]:
+            if id(anchor_node) not in visible:
+                continue
+            for attribute in ("resource-id", "content-desc", "text", "name"):
+                value = anchor_node.get(attribute, "").strip()
+                if not value or counts[attribute][value] != 1:
+                    continue
+                anchor = f"//*[@{attribute}={xpath_literal(value)}]"
+                scope = f"{anchor}[count({anchor})=1]"
+                if anchor_node is not container:
+                    scope += "/parent::*"
+                for axis, path, candidates in (
+                    (".//*", "//*", list(container.iter())[1:]),
+                    ("./*", "/*", list(container)),
+                ):
+                    matches = [x for x in candidates
+                               if (x.get("class") or x.get("type") or x.tag) == class_name]
+                    if len(matches) == 1 and matches[0] is node:
+                        return f"{scope}[count({axis}[{predicate}])=1]{path}[{predicate}]"
+        container = parents.get(container)
+    return None
+
 
 def scoped_button_locator(node, parents, visible, text_counts: Counter) -> str | None:
     """Disambiguate a named button using a unique direct label on its card.
@@ -110,6 +156,10 @@ def compact_xml(root, visible: set[int], targets: dict[int, ObservedElement]) ->
                 result.set("checked", str(target.checked).lower())
             if target.toggles_state:
                 result.set("toggles_state", "true")
+            if target.is_slider:
+                result.set("slider", "true")
+                if target.slider_value_hint:
+                    result.set("value_hint", target.slider_value_hint)
         result.extend(children)
         return result
 

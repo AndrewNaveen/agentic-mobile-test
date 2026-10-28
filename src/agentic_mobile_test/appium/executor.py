@@ -33,8 +33,25 @@ class AppiumExecutor:
         action: PlannedAction,
         observation: Observation,
     ) -> ExecutionResult:
+        slider_details = {}
         if action.kind is ActionKind.TAP:
             result = self.actions.tap(self._locator(action, observation))
+        elif action.kind is ActionKind.DRAG_SLIDER:
+            result = self.actions.drag_slider(
+                self._locator(action, observation), action.start_percent, action.end_percent,
+            )
+            slider_details = {"evidence": result.evidence}
+        elif action.kind is ActionKind.SET_SLIDER_VALUE:
+            slider = self.actions.set_slider_value(
+                self._locator(action, observation), action.target_percent,
+            )
+            result = slider.action
+            slider_details = {
+                "target_percent": slider.target_percent,
+                "ui_percent": slider.ui_percent,
+                "independent_percent": slider.independent_percent,
+                "attempts": slider.attempts,
+            }
         elif action.kind is ActionKind.TYPE_TEXT:
             if action.value_ref is None:
                 raise ValueError("A policy-approved type_text action requires value_ref")
@@ -63,7 +80,7 @@ class AppiumExecutor:
         return ExecutionResult(
             operation=result.operation,
             elapsed_seconds=result.elapsed_seconds,
-            details=result.details,
+            details=dict(result.details, **slider_details),
         )
 
     @staticmethod

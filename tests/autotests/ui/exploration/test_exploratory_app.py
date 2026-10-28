@@ -3,11 +3,10 @@
 from pathlib import Path
 from decimal import Decimal
 import json
-from uuid import uuid4
 
 import pytest
 
-from agentic_mobile_test.agent.exploration import ExplorationBrief, ExplorationLoop, ExplorationPlanner
+from agentic_mobile_test.agent.exploration import ExplorationBrief, ExplorationLoop, ExplorationPlanner, create_run_directory
 from agentic_mobile_test.appium.actions import AppiumActions
 from agentic_mobile_test.appium.executor import AppiumExecutor
 from agentic_mobile_test.appium.observer import AppiumObserver
@@ -31,7 +30,8 @@ def exploration_input(request):
 def test_explore_app(exploration_input, request, runs_directory, capsys):
     # Resolve driver only after validating explicit exploration opt-in.
     driver = request.getfixturevalue("driver")
-    actions = AppiumActions(driver, evidence_dir=runs_directory / f"exploration-captures-{uuid4().hex[:8]}")
+    run_directory = create_run_directory(exploration_input, runs_directory)
+    actions = AppiumActions(driver, evidence_dir=run_directory / "diagnostics")
     result = ExplorationLoop(
         planner=ExplorationPlanner(GeminiGateway.from_environment(budget=GeminiBudget(
             max_calls=exploration_input.max_steps, max_output_tokens=600,
@@ -41,7 +41,7 @@ def test_explore_app(exploration_input, request, runs_directory, capsys):
             max_calls=1, max_output_tokens=1000, max_cost_usd=Decimal("0.02"),
         ), request_timeout_ms=60_000),
         observer=AppiumObserver(actions), executor=AppiumExecutor(actions),
-    ).run(exploration_input, runs_directory=runs_directory)
+    ).run(exploration_input, runs_directory=runs_directory, run_directory=run_directory)
     with capsys.disabled():
         print(f"Exploration report: {result.report_path.resolve()} ({result.status})")
         print(f"Exploration outcome: {result.summary}")

@@ -14,7 +14,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from ..contracts import Observation, ObservedElement
 from .actions import AppiumActions
-from .hierarchy import compact_xml, scoped_button_locator, structural_button_locator
+from .hierarchy import (
+    SLIDER_CLASSES, compact_xml, scoped_button_locator, scoped_slider_locator,
+    structural_button_locator,
+)
 
 
 class ObservationError(RuntimeError):
@@ -42,6 +45,10 @@ class AppiumObserver:
         content_desc_counts = Counter(_attribute(node, "content-desc") for node in nodes)
         resource_id_counts = Counter(_attribute(node, "resource-id") for node in nodes)
         text_counts = Counter(_attribute(node, "text") for node in nodes)
+        slider_counts = {
+            attribute: Counter(_attribute(node, attribute) for node in nodes)
+            for attribute in ("resource-id", "content-desc", "text", "name")
+        }
         elements: list[ObservedElement] = []
         targets: dict[int, ObservedElement] = {}
 
@@ -55,10 +62,11 @@ class AppiumObserver:
             text = _attribute(node, "text")
             accessibility_id = _attribute(node, "content-desc")
             resource_id = _attribute(node, "resource-id")
-            class_name = _attribute(node, "class")
+            class_name = _attribute(node, "class") or _attribute(node, "type") or node.tag
+            is_slider = class_name in SLIDER_CLASSES
             clickable = id(node) in clickable_nodes
             enabled = _boolean_attribute(node, "enabled", default=True)
-            if not any((text, accessibility_id, resource_id, clickable)):
+            if not any((text, accessibility_id, resource_id, clickable, is_slider)):
                 continue
 
             strategy, locator = _safe_locator(
@@ -69,11 +77,14 @@ class AppiumObserver:
                 resource_id_counts=resource_id_counts,
                 text_counts=text_counts,
             )
-            if locator is None:
+            if is_slider:
+                locator = scoped_slider_locator(node, parents, visible_nodes, slider_counts)
+                strategy = "xpath" if locator is not None else None
+            if locator is None and not is_slider:
                 locator = scoped_button_locator(node, parents, visible_nodes, text_counts)
                 if locator is not None:
                     strategy = "xpath"
-            if locator is None:
+            if locator is None and not is_slider:
                 locator = structural_button_locator(node, parents, visible_nodes, text_counts)
                 if locator is not None:
                     strategy = "xpath"
@@ -98,6 +109,11 @@ class AppiumObserver:
                     toggle_labels=_toggle_labels(node, parents, visible_nodes),
                     locator_strategy=strategy,
                     locator_value=locator,
+                    is_slider=is_slider,
+                    slider_value_hint=(next(
+                        (_attribute(node, key) for key in ("value", "text", "content-desc", "label", "name")
+                         if _attribute(node, key)), "",
+                    ) if is_slider else ""),
                 )
             )
             targets[id(node)] = elements[-1]
@@ -233,6 +249,8 @@ def _fingerprint(
                 "enabled": element.enabled,
                 "checked": element.checked,
                 "toggles_state": element.toggles_state,
+                "is_slider": element.is_slider,
+                "slider_value_hint": element.slider_value_hint,
             }
             for element in elements
         ],

@@ -10,12 +10,14 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from importlib.resources import files
 import json
+import re
 from pathlib import Path
 import shutil
 from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
 from ..contracts import ActionKind, Observation, StepRecord
+from ..appium.models import AppiumActionError, SliderValueUnavailableError
 from ..evidence.serialization import _jsonable
 from .protocol import ModelBudgetExhaustedError, ModelGatewayUnavailableError, PlannerResponseError, _parse_action
 from .policy import ActionPolicy, PolicyViolation
@@ -28,6 +30,8 @@ class ExplorationBrief:
     objective: str
     app_package: str
     boundaries: tuple[str, ...]
+    app_slug: str
+    investigation_slug: str
     starting_state: str = "Observe the current screen"
     cleanup: str = "Manually restore changed demo state and return to the landing page"
     references: Mapping[str, str] = field(default_factory=dict)
@@ -43,6 +47,10 @@ class ExplorationBrief:
     launchable_apps: Mapping[str, str] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
+        for name in ("app_slug", "investigation_slug"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", value) or len(value) > 80:
+                raise ValueError(f"{name} must be a lowercase hyphenated name, at most 80 characters")
         if not isinstance(self.references, Mapping) or any(
             not isinstance(k, str) or not k.strip() or not isinstance(v, str) or not v.strip()
             for k, v in self.references.items()
@@ -61,9 +69,10 @@ class ExplorationBrief:
         if not self.boundaries or any(not isinstance(x, str) or not x.strip() for x in self.boundaries):
             raise ValueError("Provide non-empty exploration boundaries")
         permitted = {ActionKind.TAP, ActionKind.SCROLL_FORWARD,
-                     ActionKind.SCROLL_BACKWARD, ActionKind.PRESS_BACK}
+                     ActionKind.SCROLL_BACKWARD, ActionKind.PRESS_BACK,
+                     ActionKind.SET_SLIDER_VALUE, ActionKind.DRAG_SLIDER}
         if not self.allowed_actions or not self.allowed_actions <= permitted:
-            raise ValueError("Exploration supports only tap, scroll and back")
+            raise ValueError("Exploration supports tap, scroll, back, set_slider_value and drag_slider")
 
     @classmethod
     def load(cls, path: Path) -> ExplorationBrief:
@@ -114,8 +123,11 @@ class ExplorationPlanner:
                 "completion_reviews": _jsonable(completion_reviews or []),
                 "action_schema": {
                     "action": sorted(x.value for x in brief.allowed_actions) + ["propose", "review", "finish", "request_guidance"],
-                    "target_ref": "current element ref for tap; otherwise null",
+                    "target_ref": "current element ref for tap or slider actions; otherwise null",
                     "value_ref": "null",
+                    "target_percent": "absolute percentage 0..100 for set_slider_value; otherwise null",
+                    "start_percent": "track position 0..100 for drag_slider; otherwise null",
+                    "end_percent": "track position 0..100 for drag_slider, 1..30 points from start; otherwise null",
                     "reason": "short reasoning, or uncertainty needing human review",
                     "expected_effect": "predicted effect, not a verified finding",
                     "scroll_forward": "reveal later/lower content",
@@ -132,6 +144,14 @@ class ExplorationResult:
     report_path: Path
 
 
+def create_run_directory(brief: ExplorationBrief, runs_directory: Path) -> Path:
+    """Allocate one mobile investigation directory before capture begins."""
+    run_id = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S.%fZ") + "-" + uuid4().hex[:8]
+    directory = runs_directory / "apps" / brief.app_slug / brief.investigation_slug / run_id
+    directory.mkdir(parents=True, exist_ok=False)
+    return directory
+
+
 class ExplorationLoop:
     def __init__(self, *, planner: ExplorationPlanner, observer: Any,
                  executor: Any, reviewer: ExplorationGateway, policy: ActionPolicy | None = None):
@@ -141,10 +161,14 @@ class ExplorationLoop:
         self.reviewer = reviewer
         self.policy = policy or ActionPolicy()
 
-    def run(self, brief: ExplorationBrief, *, runs_directory: Path) -> ExplorationResult:
-        directory = runs_directory / "exploration" / (datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-                                      + "-exploration-" + uuid4().hex[:8])
-        directory.mkdir(parents=True)
+    def run(self, brief: ExplorationBrief, *, runs_directory: Path,
+            run_directory: Path | None = None) -> ExplorationResult:
+        directory = run_directory if run_directory is not None else create_run_directory(brief, runs_directory)
+        expected_parent = runs_directory / "apps" / brief.app_slug / brief.investigation_slug
+        if directory.resolve().parent != expected_parent.resolve():
+            raise ValueError("Run directory must belong to the brief's app and investigation")
+        if not directory.is_dir() or any(p.name != "diagnostics" for p in directory.iterdir()):
+            raise ValueError("Run directory must be newly allocated; existing evidence cannot be overwritten")
         report_path = directory / "exploration.json"
         prompt_bytes = self.planner.instruction.encode("utf-8")
         (directory / "system-prompt.md").write_bytes(prompt_bytes)
@@ -259,7 +283,10 @@ class ExplorationLoop:
                 response = {k: v for k, v in response.items() if k not in {"proposal", "review"}}
                 if response.get("action") in {"finish", "request_guidance"}:
                     fields = {"action", "target_ref", "value_ref", "reason", "expected_effect"}
-                    if (set(response) != fields or response["target_ref"] is not None
+                    if (set(response) - {"target_percent", "start_percent", "end_percent"} != fields
+                            or any(response.get(key) is not None for key in
+                                   ("target_percent", "start_percent", "end_percent"))
+                            or response["target_ref"] is not None
                             or response["value_ref"] is not None
                             or any(not isinstance(response[x], str) or not response[x].strip()
                                    for x in ("reason", "expected_effect"))):
@@ -293,7 +320,22 @@ class ExplorationLoop:
                 consecutive_note_rejections = 0
                 attempt["execution_status"] = "started_outcome_unknown"
                 save()
-                execution = self.executor.execute(brief, action, current)
+                try:
+                    execution = self.executor.execute(brief, action, current)
+                except AppiumActionError as error:
+                    attempt.update(execution_status="failed_outcome_unknown", error=str(error))
+                    if error.evidence is not None:
+                        attempt["failure_evidence"] = _jsonable(error.evidence)
+                    save()
+                    if (action.kind is ActionKind.SET_SLIDER_VALUE
+                            and isinstance(error.__cause__, SliderValueUnavailableError)):
+                        report.update(
+                            status="needs_guidance",
+                            summary=f"Slider value cannot be observed or verified: {error}. "
+                            "Provide a reviewed value reader before continuing slider exploration.",
+                        )
+                        break
+                    raise
                 attempt.update(execution_status="returned", execution=_jsonable(execution))
                 save()  # Preserve the action even if the next observation fails.
                 after = observe()
@@ -363,7 +405,8 @@ def _screen(observation: Observation) -> dict:
         "elements": [
             {"ref": e.ref, "text": e.text, "accessibility_id": e.accessibility_id,
              "clickable": e.clickable, "enabled": e.enabled, "checked": e.checked,
-             "toggles_state": e.toggles_state, "executable": e.executable}
+             "toggles_state": e.toggles_state, "executable": e.executable,
+             "is_slider": e.is_slider, "slider_value_hint": e.slider_value_hint}
             for e in observation.elements
         ],
     }

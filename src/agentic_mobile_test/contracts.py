@@ -16,6 +16,8 @@ class ActionKind(StrEnum):
     SCROLL_FORWARD = "scroll_forward"
     SCROLL_BACKWARD = "scroll_backward"
     PRESS_BACK = "press_back"
+    SET_SLIDER_VALUE = "set_slider_value"
+    DRAG_SLIDER = "drag_slider"
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,8 @@ class ObservedElement:
     toggle_labels: tuple[str, ...] = ()
     locator_strategy: str | None = field(default=None, repr=False)
     locator_value: str | None = field(default=None, repr=False)
+    is_slider: bool = False
+    slider_value_hint: str = ""
 
     @property
     def executable(self) -> bool:
@@ -64,12 +68,18 @@ class PlannedAction:
     expected_effect: str
     target_ref: str | None = None
     value_ref: str | None = None
+    target_percent: float | None = None
+    start_percent: float | None = None
+    end_percent: float | None = None
 
-    def signature(self) -> tuple[str, str | None, str | None]:
+    def signature(self) -> tuple[str, str | None, str | None, float | None, float | None, float | None]:
         return (
             self.kind.value,
             self.target_ref,
             self.value_ref,
+            self.target_percent,
+            self.start_percent,
+            self.end_percent,
         )
 
 

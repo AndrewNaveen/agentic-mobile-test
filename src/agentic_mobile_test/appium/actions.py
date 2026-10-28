@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from math import isfinite
 import re
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
@@ -397,15 +398,115 @@ class AppiumActions:
 
         return self._run("press-back", operation)
 
+    def drag_slider(
+        self,
+        locator: Locator,
+        start_percent: float,
+        end_percent: float,
+        *,
+        duration_seconds: float = 0.5,
+        timeout_seconds: float = 10.0,
+    ) -> ActionResult:
+        """Perform one experimental horizontal drag; product values stay unverified.
+
+        Percentages identify positions within current element bounds, not volume
+        or playback values. Always retain before/after evidence. Never retry or
+        infer product success from a returned gesture.
+        """
+        for name, value, minimum, maximum in (
+            ("start_percent", start_percent, 0, 100),
+            ("end_percent", end_percent, 0, 100),
+            ("duration_seconds", duration_seconds, 0.1, 1.0),
+            ("timeout_seconds", timeout_seconds, 0, 10.0),
+        ):
+            if (type(value) not in {int, float} or not minimum <= value <= maximum
+                    or not isfinite(value)):
+                raise ValueError(f"{name} must be a finite number from {minimum} to {maximum}")
+        if timeout_seconds == 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+        if not 1 <= abs(end_percent - start_percent) <= 30:
+            raise ValueError("An experimental drag must span 1 to 30 percentage points")
+
+        before = after = None
+
+        def unique_slider(driver: Any) -> Any:
+            matches = driver.find_elements(*locator)
+            if len(matches) > 1:
+                raise ValueError("Slider locator must match exactly one element")
+            if not matches:
+                return False
+            element = matches[0]
+            if not element.is_displayed() or not element.is_enabled():
+                return False
+            platform = str(driver.capabilities.get("platformName", "")).lower()
+            if platform == "android":
+                supported = element.get_attribute("class") == "android.widget.SeekBar"
+            elif platform == "ios":
+                supported = element.get_attribute("type") == "XCUIElementTypeSlider"
+            else:
+                raise ValueError(f"Unsupported slider platform: {platform}")
+            if not supported:
+                raise ValueError("drag_slider requires a recognized slider element")
+            return element
+
+        def available_value(element: Any) -> float | None:
+            try:
+                return self.read_slider_percent(element)
+            except SliderValueUnavailableError:
+                return None
+
+        def operation() -> dict[str, Any]:
+            nonlocal before, after
+            element = self._wait(timeout_seconds).until(unique_slider)
+            before = self.capture_state("drag-slider-before")
+            before_value = available_value(element)
+            rect = Rect.from_element(element)
+            if rect.width <= rect.height or rect.height <= 0:
+                raise ValueError("Experimental drags require valid horizontal slider bounds")
+            start = rect.point_at(start_percent, 50)
+            end = rect.point_at(end_percent, 50)
+            if start == end:
+                raise ValueError("Slider endpoints round to the same screen pixel")
+            self._assert_point_on_screen(start)
+            self._assert_point_on_screen(end)
+            self._touch(start, end, hold_seconds=0.05, move_duration_seconds=duration_seconds)
+            after = self.capture_state("drag-slider-after")
+            observed_element = unique_slider(self.driver)
+            if observed_element is False:
+                raise RuntimeError("Slider disappeared or became unavailable after the drag")
+            return {
+                "locator": locator,
+                "start_percent": start_percent,
+                "end_percent": end_percent,
+                "bounds": {"x": rect.x, "y": rect.y, "width": rect.width, "height": rect.height},
+                "start": {"x": start.x, "y": start.y},
+                "end": {"x": end.x, "y": end.y},
+                "duration_seconds": duration_seconds,
+                "attempts": 1,
+                "ui_percent_before": before_value,
+                "ui_percent_after": available_value(observed_element),
+                "command_outcome": "gesture_returned",
+                "value_verification": "unverified",
+                "effect_assessment": "pending_review",
+            }
+
+        result = self._run("drag-slider", operation, record_success=False)
+        return ActionResult(
+            operation=result.operation,
+            elapsed_seconds=result.elapsed_seconds,
+            details=result.details,
+            evidence=ActionEvidence(before=before, after=after),
+        )
+
     def read_slider_percent(self, element: Any) -> float:
         """Read a 0-100 slider value from common Android and iOS attributes."""
 
         candidates: list[tuple[str, Any]] = []
-        for attribute in ("value", "content-desc"):
+        platform = str(self.driver.capabilities.get("platformName", "")).lower()
+        attributes = ("content-desc", "name") if platform == "android" else ("value", "label", "name")
+        for attribute in attributes:
             candidates.append((attribute, element.get_attribute(attribute)))
         candidates.append(("text", element.text))
-        for attribute in ("label", "name"):
-            candidates.append((attribute, element.get_attribute(attribute)))
 
         for attribute, raw_value in candidates:
             if raw_value is None:
@@ -534,6 +635,8 @@ class AppiumActions:
                     target_percent,
                     track_inset_percent,
                 )
+                self._assert_point_on_screen(start)
+                self._assert_point_on_screen(end)
                 self._touch(
                     start,
                     end,

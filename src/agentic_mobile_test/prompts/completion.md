@@ -29,3 +29,10 @@ from task completion; never certify restoration without evidence.
 Respond only with the supplied JSON schema. Cite zero-based evidence_screens.
 Keep reason concise and gaps actionable. This is a model assessment of exploration
 completeness, not a deterministic product verdict.
+
+Experimental drag_slider results marked gesture_returned/unverified prove only
+that Appium returned from the gesture. Inspect the before/after screenshots for
+the claimed UI effect. Track positions are not measured product values, and an
+inverse drag does not establish exact restoration. Missing native slider values
+do not invalidate an explicitly permitted visual experiment, but retain numeric
+and physical-effect uncertainties when they are not independently demonstrated.

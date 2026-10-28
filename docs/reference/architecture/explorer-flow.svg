@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2220" viewBox="0 0 1600 2220" role="img" aria-labelledby="title description">
+<title id="title">Explorer runtime flow</title>
+<desc id="description">After explicit opt-in and brief/device validation, capture the initial screen. While limits allow, the planner requests a Gemini decision and saves the proposal. Notes are recorded without device actions; UI actions pass ActionPolicy before Appium execution and a new observation. Rejections are saved and refreshed; three consecutive rejected actions or invalid/duplicate notes stop the loop. Finish, guidance, budget exhaustion or errors preserve the exploration outcome. Final review is attempted only with captured screen evidence, using a separate budget. Reports are saved even if review is unavailable, and there is no automatic restart.</desc>
+<defs>
+<filter id="shadow" x="-10%" y="-15%" width="120%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#11283F" flood-opacity="0.06"/></filter>
+<marker id="arrow-line" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#8998A9"/></marker>
+<marker id="arrow-teal" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#087F83"/></marker>
+<marker id="arrow-violet" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#6652B8"/></marker>
+<marker id="arrow-amber" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#9A630D"/></marker>
+<marker id="arrow-blue" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#3261C8"/></marker>
+<marker id="arrow-pink" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#914F86"/></marker>
+<marker id="arrow-slate" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#586C80"/></marker>
+<marker id="arrow-red" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#A64C4C"/></marker>
+</defs>
+<rect width="1600" height="2220" fill="#F7F9FC"/>
+<g font-family="Arial, Helvetica, sans-serif">
+<rect x="32" y="28" width="1536" height="142" rx="22" fill="#11283F" stroke="#11283F" stroke-width="1.4"/>
+<text x="62" y="66" font-size="16" font-weight="700" fill="#83D7CE" text-anchor="start" letter-spacing="2.2">EXPLORER  /  02</text>
+<text x="62" y="111" font-size="38" font-weight="700" fill="#FFFFFF" text-anchor="start">How an exploration runs</text>
+<text x="62" y="145" font-size="21" font-weight="400" fill="#C4D3E2" text-anchor="start">Read downward. Return paths reuse the same step, call and cost limits.</text>
+<rect x="550" y="210" width="500" height="120" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M570 211H1030" stroke="#3261C8" stroke-width="4" stroke-linecap="round"/>
+<rect x="570" y="228" width="40" height="29" rx="8" fill="#ECF2FF" stroke="#ECF2FF" stroke-width="1.4"/>
+<text x="590" y="249" font-size="17" font-weight="700" fill="#3261C8" text-anchor="middle">01</text>
+<text x="626" y="252" font-size="25" font-weight="700" fill="#3261C8" text-anchor="start">Validate and create the session</text>
+<text x="574" y="287" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Paid opt-in, brief, app and device</text>
+<rect x="550" y="380" width="500" height="120" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M570 381H1030" stroke="#3261C8" stroke-width="4" stroke-linecap="round"/>
+<rect x="570" y="398" width="40" height="29" rx="8" fill="#ECF2FF" stroke="#ECF2FF" stroke-width="1.4"/>
+<text x="590" y="419" font-size="17" font-weight="700" fill="#3261C8" text-anchor="middle">02</text>
+<text x="626" y="422" font-size="25" font-weight="700" fill="#3261C8" text-anchor="start">Start the run</text>
+<text x="574" y="457" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Allocate folder; snapshot instructions</text>
+<rect x="550" y="550" width="500" height="120" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M570 551H1030" stroke="#087F83" stroke-width="4" stroke-linecap="round"/>
+<rect x="570" y="568" width="40" height="29" rx="8" fill="#E8F6F3" stroke="#E8F6F3" stroke-width="1.4"/>
+<text x="590" y="589" font-size="17" font-weight="700" fill="#087F83" text-anchor="middle">03</text>
+<text x="626" y="592" font-size="25" font-weight="700" fill="#087F83" text-anchor="start">Observe the initial screen</text>
+<text x="574" y="627" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Settled screenshot + XML; save hashes</text>
+<path d="M800 725.0L980.0 790L800 855.0L620.0 790Z" fill="#FFF4DF" stroke="#9A630D" stroke-width="1.8"/>
+<text x="800" y="791" font-size="23" font-weight="700" fill="#9A630D" text-anchor="middle">Limits allow a decision?</text>
+<text x="800" y="818" font-size="18" font-weight="400" fill="#9A630D" text-anchor="middle">Step / call / estimated cost</text>
+<rect x="550" y="910" width="500" height="145" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M570 911H1030" stroke="#6652B8" stroke-width="4" stroke-linecap="round"/>
+<rect x="570" y="928" width="40" height="29" rx="8" fill="#F1EDFC" stroke="#F1EDFC" stroke-width="1.4"/>
+<text x="590" y="949" font-size="17" font-weight="700" fill="#6652B8" text-anchor="middle">04</text>
+<text x="626" y="952" font-size="25" font-weight="700" fill="#6652B8" text-anchor="start">Ask the planner</text>
+<text x="574" y="987" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Brief + current screen + history</text>
+<text x="574" y="1015" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Save every proposed decision</text>
+<path d="M800 1105.0L960.0 1170L800 1235.0L640.0 1170Z" fill="#F1EDFC" stroke="#6652B8" stroke-width="1.8"/>
+<text x="800" y="1178" font-size="23" font-weight="700" fill="#6652B8" text-anchor="middle">What was returned?</text>
+<rect x="65" y="1095" width="370" height="150" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M85 1096H415" stroke="#6652B8" stroke-width="4" stroke-linecap="round"/>
+<text x="89" y="1137" font-size="25" font-weight="700" fill="#6652B8" text-anchor="start">Investigation note</text>
+<text x="89" y="1172" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Validate proposal or review</text>
+<text x="89" y="1200" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Record notes and feedback</text>
+<rect x="1190" y="1095" width="345" height="150" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M1210 1096H1515" stroke="#586C80" stroke-width="4" stroke-linecap="round"/>
+<text x="1214" y="1137" font-size="25" font-weight="700" fill="#586C80" text-anchor="start">Finish or guidance</text>
+<text x="1214" y="1172" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">End device exploration</text>
+<text x="1214" y="1200" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Keep the reason for stopping</text>
+<path d="M800 1315.0L965.0 1380L800 1445.0L635.0 1380Z" fill="#FFF4DF" stroke="#9A630D" stroke-width="1.8"/>
+<text x="800" y="1381" font-size="23" font-weight="700" fill="#9A630D" text-anchor="middle">UI action allowed?</text>
+<text x="800" y="1408" font-size="18" font-weight="400" fill="#9A630D" text-anchor="middle">ActionPolicy</text>
+<rect x="1190" y="1305" width="345" height="150" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M1210 1306H1515" stroke="#9A630D" stroke-width="4" stroke-linecap="round"/>
+<text x="1214" y="1347" font-size="25" font-weight="700" fill="#9A630D" text-anchor="start">Rejected action</text>
+<text x="1214" y="1382" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Save rejection and feedback</text>
+<text x="1214" y="1410" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Refresh the screen if continuing</text>
+<path d="M250 1365.0L400.0 1430L250 1495.0L100.0 1430Z" fill="#F1EDFC" stroke="#6652B8" stroke-width="1.8"/>
+<text x="250" y="1431" font-size="23" font-weight="700" fill="#6652B8" text-anchor="middle">3 bad notes in a row?</text>
+<text x="250" y="1458" font-size="18" font-weight="400" fill="#6652B8" text-anchor="middle">Invalid or duplicate</text>
+<path d="M1362 1525.0L1522.0 1590L1362 1655.0L1202.0 1590Z" fill="#FFF4DF" stroke="#9A630D" stroke-width="1.8"/>
+<text x="1362" y="1598" font-size="23" font-weight="700" fill="#9A630D" text-anchor="middle">3 rejections in a row?</text>
+<rect x="550" y="1510" width="500" height="125" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M570 1511H1030" stroke="#3261C8" stroke-width="4" stroke-linecap="round"/>
+<rect x="570" y="1528" width="40" height="29" rx="8" fill="#ECF2FF" stroke="#ECF2FF" stroke-width="1.4"/>
+<text x="590" y="1549" font-size="17" font-weight="700" fill="#3261C8" text-anchor="middle">05</text>
+<text x="626" y="1552" font-size="25" font-weight="700" fill="#3261C8" text-anchor="start">Execute the action</text>
+<text x="574" y="1587" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Mark attempt started before Appium</text>
+<text x="574" y="1615" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Tap / scroll / Back through actions</text>
+<rect x="550" y="1690" width="500" height="130" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M570 1691H1030" stroke="#087F83" stroke-width="4" stroke-linecap="round"/>
+<rect x="570" y="1708" width="40" height="29" rx="8" fill="#E8F6F3" stroke="#E8F6F3" stroke-width="1.4"/>
+<text x="590" y="1729" font-size="17" font-weight="700" fill="#087F83" text-anchor="middle">06</text>
+<text x="626" y="1732" font-size="25" font-weight="700" fill="#087F83" text-anchor="start">Observe and save the result</text>
+<text x="574" y="1767" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Save execution before the next capture</text>
+<text x="574" y="1795" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Capture after-screen; append history</text>
+<rect x="60" y="1930" width="1480" height="225" rx="22" fill="#F8EDF5" stroke="#E5D1E0" stroke-width="1.4"/>
+<text x="85" y="1968" font-size="16" font-weight="700" fill="#914F86" text-anchor="start" letter-spacing="1.8">AFTER DEVICE EXPLORATION STOPS</text>
+<rect x="85" y="1990" width="650" height="130" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M105 1991H715" stroke="#914F86" stroke-width="4" stroke-linecap="round"/>
+<rect x="105" y="2008" width="40" height="29" rx="8" fill="#F8EDF5" stroke="#F8EDF5" stroke-width="1.4"/>
+<text x="125" y="2029" font-size="17" font-weight="700" fill="#914F86" text-anchor="middle">07</text>
+<text x="161" y="2032" font-size="25" font-weight="700" fill="#914F86" text-anchor="start">Final review</text>
+<text x="109" y="2067" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Preserve original stop; review captured evidence</text>
+<text x="109" y="2095" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Separate budget; unavailable if no screen or review fails</text>
+<rect x="865" y="1990" width="650" height="130" rx="18" fill="white" stroke="#D9E2EC" stroke-width="1.4" filter="url(#shadow)"/>
+<path d="M885 1991H1495" stroke="#586C80" stroke-width="4" stroke-linecap="round"/>
+<rect x="885" y="2008" width="40" height="29" rx="8" fill="#EEF3F8" stroke="#EEF3F8" stroke-width="1.4"/>
+<text x="905" y="2029" font-size="17" font-weight="700" fill="#586C80" text-anchor="middle">08</text>
+<text x="941" y="2032" font-size="25" font-weight="700" fill="#586C80" text-anchor="start">Save the final report</text>
+<text x="889" y="2067" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Status, gaps, attempts, evidence and usage</text>
+<text x="889" y="2095" font-size="21" font-weight="400" fill="#52657A" text-anchor="start">Return to pytest for human review</text>
+<path d="M800 330 L800 380" fill="none" stroke="#3261C8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-blue)"/>
+<path d="M800 500 L800 550" fill="none" stroke="#3261C8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-blue)"/>
+<path d="M800 670 L800 725" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-teal)"/>
+<path d="M800 855 L800 910" fill="none" stroke="#6652B8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-violet)"/>
+<path d="M800 1055 L800 1105" fill="none" stroke="#6652B8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-violet)"/>
+<rect x="818" y="874" width="48.620000000000005" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="826" y="892" font-size="18" font-weight="600" fill="#6652B8" text-anchor="start">Yes</text>
+<path d="M640 1170 L435 1170" fill="none" stroke="#6652B8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-violet)"/>
+<rect x="498.92" y="1134" width="58.160000000000004" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="528" y="1152" font-size="18" font-weight="600" fill="#6652B8" text-anchor="middle">Note</text>
+<path d="M960 1170 H1087 Q1095 1158 1103 1170 H1127 Q1135 1158 1143 1170 H1190" fill="none" stroke="#586C80" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-slate)"/>
+<rect x="983.91" y="1134" width="182.18" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="1075" y="1152" font-size="18" font-weight="600" fill="#586C80" text-anchor="middle">Finish / guidance</text>
+<path d="M800 1235 L800 1315" fill="none" stroke="#9A630D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-amber)"/>
+<rect x="822" y="1265" width="105.86" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="830" y="1283" font-size="18" font-weight="600" fill="#9A630D" text-anchor="start">UI action</text>
+<path d="M250 1245 L250 1365" fill="none" stroke="#6652B8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-violet)"/>
+<path d="M100 1430 L35 1430 L35 790 L620 790" fill="none" stroke="#6652B8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-violet)"/>
+<rect x="96.9" y="743" width="306.2" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="250" y="761" font-size="18" font-weight="600" fill="#6652B8" text-anchor="middle">No: next decision, same screen</text>
+<path d="M250 1495 L250 1860 L410 1860 L410 1990" fill="none" stroke="#914F86" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-pink)"/>
+<rect x="261" y="1552" width="105.86" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="269" y="1570" font-size="18" font-weight="600" fill="#914F86" text-anchor="start">Yes: stop</text>
+<path d="M800 1445 L800 1510" fill="none" stroke="#3261C8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-blue)"/>
+<rect x="823" y="1472" width="48.620000000000005" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="831" y="1490" font-size="18" font-weight="600" fill="#3261C8" text-anchor="start">Yes</text>
+<path d="M965 1380 H1087 Q1095 1368 1103 1380 H1127 Q1135 1368 1143 1380 H1190" fill="none" stroke="#9A630D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-amber)"/>
+<rect x="1056.46" y="1344" width="39.08" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="1076" y="1362" font-size="18" font-weight="600" fill="#9A630D" text-anchor="middle">No</text>
+<path d="M1362 1455 L1362 1525" fill="none" stroke="#9A630D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-amber)"/>
+<path d="M1202 1590 L1135 1590 L1135 705 L1095 705" fill="none" stroke="#9A630D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="1172" y="1492" width="182.18" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="1180" y="1510" font-size="18" font-weight="600" fill="#9A630D" text-anchor="start">No: next decision</text>
+<path d="M1362 1655 L1362 1860 L410 1860 L410 1990" fill="none" stroke="#914F86" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-pink)"/>
+<rect x="1376" y="1717" width="105.86" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="1384" y="1735" font-size="18" font-weight="600" fill="#914F86" text-anchor="start">Yes: stop</text>
+<path d="M800 1635 L800 1690" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-teal)"/>
+<path d="M1050 1755 L1095 1755 L1095 705 L800 705 L800 725" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-teal)"/>
+<rect x="928.99" y="669" width="144.02" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="1001" y="687" font-size="18" font-weight="600" fill="#087F83" text-anchor="middle">Next decision</text>
+<path d="M980 790 L1560 790 L1560 1900 L410 1900 L410 1990" fill="none" stroke="#914F86" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="7 7" marker-end="url(#arrow-pink)"/>
+<rect x="1160.75" y="743" width="258.5" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="1290" y="761" font-size="18" font-weight="600" fill="#914F86" text-anchor="middle">No: preserve stop outcome</text>
+<path d="M1535 1170 L1560 1170" fill="none" stroke="#586C80" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-slate)"/>
+<path d="M735 2055 L865 2055" fill="none" stroke="#914F86" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrow-pink)"/>
+<rect x="737.53" y="2019" width="124.94000000000001" height="28" rx="6" fill="#F7F9FC" stroke="#F7F9FC" stroke-width="1.4"/>
+<text x="800" y="2037" font-size="18" font-weight="600" fill="#914F86" text-anchor="middle">Save review</text>
+<text x="85" y="1893" font-size="20" font-weight="400" fill="#52657A" text-anchor="start">Handled observation, provider or execution errors also end the loop and preserve available evidence.</text>
+<text x="60" y="2190" font-size="20" font-weight="400" fill="#52657A" text-anchor="start">Every attempt is saved. Final review assesses the evidence; it never restarts exploration or proves product correctness.</text>
+<circle cx="1095" cy="705" r="4.5" fill="#087F83"/>
+</g>
+</svg>

@@ -32,6 +32,28 @@ Compact XML preserves groups: a label and its button may be siblings. Select the
 associated clickable=true, executable=true, enabled=true control, not a label.
 Container nodes without refs cannot be targeted.
 
+Use set_slider_value only when it is offered by the brief. Select a current ref
+marked slider=true and supply target_percent as an absolute number from 0 to 100.
+The framework calculates the drag from current element bounds and verifies the
+result with fixed limits. Never use tap or page scroll as a substitute for a
+slider drag, and never invent a current slider value from its thumb position.
+If the value cannot be read or verified, request guidance for a value reader or
+use drag_slider only when that separate experimental permission is offered.
+Record the observed numeric/UI effect separately from assumptions about volume,
+playback position or physical devices. Capture original values for manual cleanup.
+
+Use drag_slider to investigate a recognized slider without claiming a verified
+numeric value. Choose a current slider ref and start_percent/end_percent as
+physical horizontal positions within its visible bounds. You may estimate the
+thumb's starting position from the screenshot; this is an experiment input, never
+an observed volume or playback value. Each drag spans 1 to 30 percentage points,
+performs one gesture and captures evidence. Inspect the next observation for the
+visible effect; unchanged native XML does not prove an unchanged thumb. Do not
+repeat an identical probe more than twice, including after successful gestures.
+Record uncertain or absent effects honestly. Do not infer exact restoration from
+returning to an estimated position. Stop for guidance on unknown dialogs or
+unexpected navigation; do not dismiss them to continue a slider experiment.
+
 A rejected action did NOT execute. Read policy_feedback and investigation_feedback.
 Try another permitted route or request guidance; do not repeatedly submit the same
 rejected action or bypass policy. A recorded note succeeded even though it did not
@@ -60,6 +82,10 @@ Return the supplied structured JSON schema, not prose or executable code.
   evidence_steps:[completed action step IDs], explanation, open_question};
   proposal=null. If no uncertainty was identified, say human review is still needed.
 - Notes, finish and request_guidance require null target_ref and value_ref.
+- set_slider_value requires target_ref and target_percent; value_ref=null.
+- drag_slider requires target_ref, start_percent and end_percent; value_ref=null
+  and target_percent=null. Other decisions require start_percent=end_percent=null.
+- Every other decision requires target_percent=null.
 - UI actions, finish and request_guidance require null proposal and review.
 - Every decision includes a concise reason and expected_effect. Predictions are
   not evidence.

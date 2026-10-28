@@ -1,4 +1,6 @@
 {
+  "app_slug": "home-assistant",
+  "investigation_slug": "playback-controls",
   "objective": "Find one demo media player. Investigate its playback controls, propose one high-level test scenario and a candidate acceptance criterion, exercise that behavior, and review the evidence. Distinguish observed UI behavior from assumptions about intended behavior or real audio playback.",
   "app_package": "io.homeassistant.companion.android",
   "boundaries": [
@@ -8,7 +10,7 @@
     "Request guidance when unsure whether a control is within these permissions"
   ],
   "cleanup": "Manually restore the chosen demo player's original playback state and return to Overview; consult the initial evidence",
-  "sandbox_confirmed": true,
+  "sandbox_confirmed": false,
   "max_steps": 15,
   "allow_toggle_changes": true
 }

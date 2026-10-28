@@ -1,0 +1,15 @@
+{
+  "app_slug": "demo-app",
+  "investigation_slug": "control-investigation",
+  "app_package": "com.example.demo",
+  "objective": "Replace this with the behavior or question you want investigated",
+  "boundaries": [
+    "Use only the isolated demo account, server and devices",
+    "Replace this with the permitted navigation and state changes",
+    "Request guidance before taking an action outside these permissions"
+  ],
+  "cleanup": "Manually restore the original app state recorded before exploration",
+  "max_steps": 10,
+  "allow_toggle_changes": false,
+  "sandbox_confirmed": false
+}

@@ -1,0 +1,17 @@
+{
+  "app_slug": "home-assistant",
+  "investigation_slug": "sliders",
+  "app_package": "io.homeassistant.companion.android",
+  "objective": "Explore the sliders in one demo media player. Try short drags in both directions, record what visibly changes, and identify what each slider appears to control. Separate observed effects from unverified numeric values or real audio effects.",
+  "boundaries": [
+    "Use only the isolated Home Assistant demo server and its simulated players",
+    "Navigation and short slider drags in both directions on one demo player are permitted",
+    "Do not toggle playback, change account settings or server configuration, or operate real devices",
+    "Request guidance before taking an action outside these permissions"
+  ],
+  "cleanup": "Record the initial slider positions. Return changed sliders to their observed starting positions when possible, report exact restoration as unverified when no value is readable, and return to Overview. Record any remaining manual cleanup.",
+  "max_steps": 10,
+  "allow_toggle_changes": false,
+  "sandbox_confirmed": false,
+  "allowed_actions": ["tap", "scroll_forward", "scroll_backward", "press_back", "drag_slider"]
+}
