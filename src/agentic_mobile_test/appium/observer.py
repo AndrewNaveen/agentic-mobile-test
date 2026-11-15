@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from hashlib import sha256
-import json
 from time import monotonic
 from typing import Any
 from xml.etree import ElementTree
@@ -15,7 +15,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from ..contracts import Observation, ObservedElement
 from .actions import AppiumActions
 from .hierarchy import (
-    SLIDER_CLASSES, compact_xml, scoped_button_locator, scoped_slider_locator,
+    SLIDER_CLASSES,
+    compact_xml,
+    scoped_button_locator,
+    scoped_slider_locator,
     structural_button_locator,
 )
 
@@ -77,6 +80,7 @@ class AppiumObserver:
                 resource_id_counts=resource_id_counts,
                 text_counts=text_counts,
             )
+            card_label = ""
             if is_slider:
                 locator = scoped_slider_locator(node, parents, visible_nodes, slider_counts)
                 strategy = "xpath" if locator is not None else None
@@ -85,8 +89,9 @@ class AppiumObserver:
                 if locator is not None:
                     strategy = "xpath"
             if locator is None and not is_slider:
-                locator = structural_button_locator(node, parents, visible_nodes, text_counts)
-                if locator is not None:
+                structural = structural_button_locator(node, parents, visible_nodes, text_counts)
+                if structural is not None:
+                    locator, card_label = structural
                     strategy = "xpath"
             elements.append(
                 ObservedElement(
@@ -110,6 +115,7 @@ class AppiumObserver:
                     locator_strategy=strategy,
                     locator_value=locator,
                     is_slider=is_slider,
+                    card_label=card_label,
                     slider_value_hint=(next(
                         (_attribute(node, key) for key in ("value", "text", "content-desc", "label", "name")
                          if _attribute(node, key)), "",

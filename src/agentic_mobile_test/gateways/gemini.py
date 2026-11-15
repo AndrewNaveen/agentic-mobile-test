@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal
 import json
 import os
+from collections.abc import Mapping
+from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
-from ..agent.protocol import ModelBudgetExhaustedError, ModelGatewayUnavailableError, PlannerResponseError
+from ..agent.protocol import (
+    ModelBudgetExhaustedError,
+    ModelGatewayUnavailableError,
+    PlannerResponseError,
+)
 
 _ACTION_SCHEMA: Mapping[str, Any] = {
     "type": "object",
@@ -169,12 +174,24 @@ class GeminiGateway:
         self, *, system_instruction: str, payload: Mapping[str, Any], screenshot: Path | tuple[Path, ...],
     ) -> Mapping[str, Any]:
         from copy import deepcopy
+
         from ..agent.investigation import PROPOSAL_SCHEMA, REVIEW_SCHEMA
 
         schema = deepcopy(_ACTION_SCHEMA)
-        schema["properties"]["action"]["enum"].extend(["propose", "review", "finish", "request_guidance"])
-        for name, shape in (("proposal", PROPOSAL_SCHEMA), ("review", REVIEW_SCHEMA)):
-            schema["properties"][name] = {"anyOf": [{"type": "null"}, shape]}
+        choices = payload["action_schema"]["action"]
+        properties = schema["properties"]
+        properties["action"]["enum"] = choices
+        proposal = deepcopy(PROPOSAL_SCHEMA)
+        reference_ids = list(payload["brief"]["references"])
+        if reference_ids:
+            proposal["properties"]["source_ref"]["anyOf"][0]["enum"] = reference_ids
+        else:
+            proposal["properties"]["source_ref"] = {"type": "null"}
+            proposal["properties"]["basis"]["enum"] = ["hypothesis"]
+        for action, name, shape in (("propose", "proposal", proposal), ("review", "review", REVIEW_SCHEMA)):
+            properties[name] = {"type": "null"}
+            if action in choices:
+                properties[name] = {"anyOf": [{"type": "null"}, shape]}
             schema["required"].append(name)
         return self._choose(system_instruction=system_instruction, payload=payload,
                             screenshot=screenshot, response_schema=schema)
@@ -291,6 +308,7 @@ class _GoogleGenAITransport:
             # ordinary content part so the local cost preflight remains
             # conservative without changing the generation request.
             contents=self._contents(
+                model,
                 payload,
                 screenshot,
                 prefix=system_instruction,
@@ -310,7 +328,7 @@ class _GoogleGenAITransport:
     ) -> GeminiModelResponse:
         response = self._client.models.generate_content(
             model=model,
-            contents=self._contents(payload, screenshot),
+            contents=self._contents(model, payload, screenshot),
             config=self._types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 max_output_tokens=max_output_tokens,
@@ -341,6 +359,7 @@ class _GoogleGenAITransport:
 
     def _contents(
         self,
+        model: str,
         payload: Mapping[str, Any],
         screenshot: Path | tuple[Path, ...],
         *,
@@ -351,10 +370,20 @@ class _GoogleGenAITransport:
             contents.append(prefix)
         contents.append(json.dumps(payload, sort_keys=True, separators=(",", ":")))
         images = screenshot if isinstance(screenshot, tuple) else (screenshot,)
+        actions = payload.get("action_schema", {}).get("action", ())
+        use_medium_resolution = (
+            model.startswith("gemini-3")
+            and payload.get("mode") == "exploration"
+            and not {"drag_slider", "set_slider_value"}.intersection(actions)
+        )
         for index, path in enumerate(images):
             contents.append(f"Evidence screenshot {index}")
-            contents.append(self._types.Part.from_bytes(
-                data=path.read_bytes(), mime_type=_image_mime_type(path)))
+            part = self._types.Part.from_bytes(data=path.read_bytes(), mime_type=_image_mime_type(path))
+            if use_medium_resolution:
+                part.media_resolution = self._types.PartMediaResolution(
+                    level=self._types.PartMediaResolutionLevel.MEDIA_RESOLUTION_MEDIUM
+                )
+            contents.append(part)
         return contents
 
 

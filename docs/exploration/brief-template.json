@@ -11,5 +11,7 @@
   "cleanup": "Manually restore the original app state recorded before exploration",
   "max_steps": 10,
   "allow_toggle_changes": false,
+  "allowed_tap_targets": {},
+  "require_action_evidence": true,
   "sandbox_confirmed": false
 }

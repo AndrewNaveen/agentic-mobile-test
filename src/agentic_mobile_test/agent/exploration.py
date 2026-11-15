@@ -5,24 +5,30 @@ Reports are observations for human review, never successful regression paths.
 
 from __future__ import annotations
 
+import json
+import re
+import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib.resources import files
-import json
-import re
 from pathlib import Path
-import shutil
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
-from ..contracts import ActionKind, Observation, StepRecord
 from ..appium.models import AppiumActionError, SliderValueUnavailableError
+from ..contracts import ActionKind, Observation, StepRecord
 from ..evidence.serialization import _jsonable
-from .protocol import ModelBudgetExhaustedError, ModelGatewayUnavailableError, PlannerResponseError, _parse_action
-from .policy import ActionPolicy, PolicyViolation
+from .completion import has_reviewed_action_evidence, validate_completion
 from .investigation import record_investigation
-from .completion import validate_completion
+from .policy import TAP_TARGET_FIELDS, ActionPolicy, PolicyViolation, matches_tap_target
+from .protocol import (
+    ModelBudgetExhaustedError,
+    ModelGatewayUnavailableError,
+    PlannerResponseError,
+    _parse_action,
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,8 @@ class ExplorationBrief:
     sandbox_confirmed: bool = False
     max_steps: int = 10
     allow_toggle_changes: bool = False
+    allowed_tap_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    require_action_evidence: bool = True
     allowed_actions: frozenset[ActionKind] = frozenset({
         ActionKind.TAP, ActionKind.SCROLL_FORWARD,
         ActionKind.SCROLL_BACKWARD, ActionKind.PRESS_BACK,
@@ -66,6 +74,19 @@ class ExplorationBrief:
             raise ValueError("max_steps must be an integer between 1 and 50")
         if type(self.allow_toggle_changes) is not bool:
             raise ValueError("allow_toggle_changes must be a boolean")
+        if type(self.require_action_evidence) is not bool:
+            raise ValueError("require_action_evidence must be a boolean")
+        if not isinstance(self.allowed_tap_targets, Mapping) or any(
+            key not in TAP_TARGET_FIELDS
+            or not isinstance(values, tuple) or not values
+            or any(not isinstance(value, str) or not value.strip() or value != value.strip()
+                   for value in values)
+            for key, values in self.allowed_tap_targets.items()
+        ):
+            raise ValueError(
+                "allowed_tap_targets must map text, accessibility_id, resource_id or card_label "
+                "to nonempty arrays of exact UI values"
+            )
         if not self.boundaries or any(not isinstance(x, str) or not x.strip() for x in self.boundaries):
             raise ValueError("Provide non-empty exploration boundaries")
         permitted = {ActionKind.TAP, ActionKind.SCROLL_FORWARD,
@@ -86,6 +107,11 @@ class ExplorationBrief:
             if not isinstance(value["allowed_actions"], list):
                 raise ValueError("allowed_actions must be a list")
             value["allowed_actions"] = frozenset(ActionKind(x) for x in value["allowed_actions"])
+        if "allowed_tap_targets" in value:
+            targets = value["allowed_tap_targets"]
+            if not isinstance(targets, dict) or any(not isinstance(items, list) for items in targets.values()):
+                raise ValueError("allowed_tap_targets must be an object of arrays")
+            value["allowed_tap_targets"] = {key: tuple(items) for key, items in targets.items()}
         return cls(**value)
 
 
@@ -108,21 +134,44 @@ class ExplorationPlanner:
 
     def decide(self, brief: ExplorationBrief, observation: Observation,
                screens: list[dict], attempts: list[dict], remaining: int,
-               candidate: dict | None = None, reviews: list[dict] | None = None,
-               completion_reviews: list[dict] | None = None) -> Mapping[str, Any]:
+               candidate: dict | None = None, reviews: list[dict] | None = None) -> Mapping[str, Any]:
+        actions = sorted(action.value for action in brief.allowed_actions)
+        actions.extend(["propose"] if candidate is None else ["review"])
+        actions.extend(["finish", "request_guidance"])
+        previous_screen = None
+        if len(screens) > 1 and screens[-2]["fingerprint"] != observation.fingerprint:
+            previous_screen = dict(screens[-2], index=len(screens) - 2)
+            previous_screen.pop("evidence", None)
+        action_trail = []
+        for attempt in attempts:
+            entry = {key: attempt[key] for key in (
+                "step", "before_screen", "after_screen", "execution_status", "screen_changed",
+                "policy_feedback", "investigation_feedback",
+            ) if key in attempt}
+            entry["decision"] = {
+                key: attempt["proposal"][key] for key in (
+                    "action", "target_ref", "target_percent", "start_percent",
+                    "end_percent", "reason", "expected_effect",
+                ) if attempt["proposal"].get(key) is not None
+            }
+            action_trail.append(entry)
         return self.gateway.choose_exploration(
             system_instruction=self.instruction,
             screenshot=observation.screenshot,
             payload={
                 "mode": "exploration", "brief": _jsonable(brief),
                 "remaining_steps": remaining,
-                "current_screen": _screen(observation),
-                "visited_screens": _jsonable(screens),
-                "attempts": _jsonable(attempts),
+                "current_screen": dict(_screen(observation), index=len(screens) - 1),
+                "attempts": action_trail,
+                "previous_screen": previous_screen,
                 "candidate": _jsonable(candidate), "reviews": _jsonable(reviews or []),
-                "completion_reviews": _jsonable(completion_reviews or []),
                 "action_schema": {
-                    "action": sorted(x.value for x in brief.allowed_actions) + ["propose", "review", "finish", "request_guidance"],
+                    "action": actions,
+                    "allowlisted_tap_refs": [
+                        element.ref for element in observation.elements
+                        if ActionKind.TAP in brief.allowed_actions
+                        and matches_tap_target(brief, element)
+                    ],
                     "target_ref": "current element ref for tap or slider actions; otherwise null",
                     "value_ref": "null",
                     "target_percent": "absolute percentage 0..100 for set_slider_value; otherwise null",
@@ -210,9 +259,12 @@ class ExplorationLoop:
                 "".join(json.dumps(attempt) + "\n" for attempt in attempts), encoding="utf-8")
             (directory / "report.md").write_text(_report_markdown(report), encoding="utf-8")
 
-        def observe() -> Observation:
+        def observe(*, after_action: dict | None = None) -> Observation:
             observed = self.observer.observe()
             record = _screen(observed)
+            in_scope = observed.app_package == brief.app_package
+            if not in_scope:
+                record["local_only"] = True
             record["evidence"] = {}
             screen_directory = directory / "screens" / f"{len(screens):03d}"
             screen_directory.mkdir(parents=True)
@@ -223,10 +275,15 @@ class ExplorationLoop:
                     "path": str(destination.relative_to(directory)),
                     "sha256": sha256(destination.read_bytes()).hexdigest(),
                 }
+            if after_action is not None:
+                after_action.update(
+                    after_screen=len(screens),
+                    screen_changed=screens[after_action["before_screen"]]["fingerprint"] != observed.fingerprint,
+                )
             screens.append(record)
             save()
-            if observed.app_package != brief.app_package:
-                raise PolicyViolation("Observed app is outside the approved package; stopping")
+            if not in_scope:
+                raise PolicyViolation("Observed app is outside the approved package; evidence was saved locally")
             return observed
 
         save()
@@ -239,8 +296,7 @@ class ExplorationLoop:
                 save()
                 response = self.planner.decide(brief, current, screens, attempts,
                                                brief.max_steps - number + 1,
-                                               report["candidate"], report["reviews"],
-                                               report["completion_reviews"])
+                                               report["candidate"], report["reviews"])
                 # Retain every proposed command, including rejected ones.
                 attempt = {"step": number, "before_screen": len(screens) - 1,
                            "proposal": dict(response), "execution_status": "not_executed"}
@@ -338,12 +394,9 @@ class ExplorationLoop:
                     raise
                 attempt.update(execution_status="returned", execution=_jsonable(execution))
                 save()  # Preserve the action even if the next observation fails.
-                after = observe()
-                attempt.update(after_screen=len(screens) - 1,
-                               screen_changed=current.fingerprint != after.fingerprint)
+                after = observe(after_action=attempt)
                 history.append(StepRecord(number, current, action, execution, after))
                 current = after
-                save()
             else:
                 report.update(status="budget_exhausted", summary="Exploration decision limit reached; final review will assess the evidence")
         except ModelBudgetExhaustedError as error:
@@ -355,19 +408,26 @@ class ExplorationLoop:
         finally:
             save()
 
-        # Terminal review is independent of every exploration stop condition. No
-        # model decision can restart device actions from this phase.
+        # Keep package-mismatch captures and the associated trail local.
         report["exploration_outcome"] = {"status": report["status"], "summary": report["summary"]}
         review_record = {"step": "final", "status": "started",
                          "authority": "model_assessment_not_product_verdict"}
         report["completion_reviews"].append(review_record)
+        if screens and screens[-1].get("local_only"):
+            review_record.update(
+                status="skipped",
+                reason="Final model review skipped because an out-of-scope screen was captured.",
+            )
+            save()
+            return ExplorationResult(report["status"], report["summary"], report_path)
         save()
         try:
             if not screens:
                 raise ModelGatewayUnavailableError("No captured screen evidence is available for final review")
             reviewed = self.reviewer.review_completion(
                 system_instruction=self.planner.review_instruction,
-                payload={"brief": report["brief"], "screens": screens,
+                payload={"brief": {key: value for key, value in report["brief"].items() if key != "cleanup"},
+                         "screens": screens,
                          "attempts": attempts, "candidate": report["candidate"],
                          "reviews": report["reviews"],
                          "exploration_outcome": report["exploration_outcome"],
@@ -379,13 +439,24 @@ class ExplorationLoop:
             validated = validate_completion(dict(reviewed), len(screens))
             review_record["status"] = "returned"
             if report["status"] == "review_pending":
-                report.update(status="completed" if validated["decision"] == "complete" else "needs_guidance",
-                              summary=validated["reason"])
+                if validated["decision"] != "complete":
+                    report.update(status="needs_guidance", summary=validated["reason"])
+                elif brief.require_action_evidence and not has_reviewed_action_evidence(
+                    attempts, report["reviews"], validated["evidence_screens"]
+                ):
+                    reason = (
+                        "Behavior exploration needs a recorded review of a returned action, "
+                        "with its before and after screens cited in the final review."
+                    )
+                    review_record["completion_blocked_reason"] = reason
+                    report.update(status="needs_guidance", summary=reason)
+                else:
+                    report.update(status="completed", summary=validated["reason"])
             # Preserve budget, policy, provider and execution stops even if the
             # reviewer considers the observed behavior sufficient.
         except Exception as error:
             review_record.update(status="review_unavailable", error=f"{type(error).__name__}: {error}")
-            if report["status"] != "error":
+            if report["status"] == "review_pending":
                 report.update(status="review_unavailable", summary=review_record["error"])
         finally:
             save()
@@ -437,6 +508,8 @@ def _report_markdown(report: dict) -> str:
             lines.append("  " + json.dumps(review["response"]))
         if "error" in review:
             lines.append("  " + review["error"])
+        if "reason" in review:
+            lines.append("  " + review["reason"])
     lines += ["", "## Action trail", ""]
     for attempt in report["attempts"]:
         lines.append(f"- Step {attempt['step']}: {attempt['proposal'].get('action')}; "
@@ -449,7 +522,8 @@ def _report_markdown(report: dict) -> str:
     lines += ["", "## Screens", ""]
     for index, screen in enumerate(report["screens"]):
         evidence = screen["evidence"]
-        lines.append(f"- Screen {index}: [screenshot]({evidence['screenshot']['path']}) / "
+        scope = " (local only)" if screen.get("local_only") else ""
+        lines.append(f"- Screen {index}{scope}: [screenshot]({evidence['screenshot']['path']}) / "
                      f"[UI XML]({evidence['ui_source']['path']})")
     lines += ["", "## Cleanup", "", "Not verified. " + report["cleanup"]["instructions"], ""]
     return "\n".join(lines)

@@ -40,6 +40,7 @@ class ObservedElement:
     locator_value: str | None = field(default=None, repr=False)
     is_slider: bool = False
     slider_value_hint: str = ""
+    card_label: str = ""
 
     @property
     def executable(self) -> bool:

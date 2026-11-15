@@ -18,10 +18,10 @@ validate it, execute a permitted action and save the evidence.
 ![Explorer execution flow](explorer-flow.png)
 
 - **Notes** record a proposed scenario or evidence review without touching the app.
-- **UI actions** require policy approval, then execution and a new observation.
+- **UI actions** require policy approval, then execution and a new observation. Taps require an exact match from the brief's allowed targets.
 - **Rejected decisions** are retained with feedback and consume the existing limits.
-- **Stopping** preserves the exploration outcome and attempts final review when screenshots exist.
-- **Final review** cannot restart exploration. The report is evidence for human review.
+- **Stopping** preserves the exploration outcome. A package mismatch keeps the capture local and skips final review.
+- **Final review** cannot restart exploration. Behavior investigations require a recorded action review and final citations for its before and after screens.
 
 ## Where it is implemented
 

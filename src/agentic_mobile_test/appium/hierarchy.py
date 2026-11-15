@@ -85,7 +85,7 @@ def scoped_button_locator(node, parents, visible, text_counts: Counter) -> str |
     return None
 
 
-def structural_button_locator(node, parents, visible, text_counts: Counter) -> str | None:
+def structural_button_locator(node, parents, visible, text_counts: Counter) -> tuple[str, str] | None:
     """Only an unlabeled direct button in a single-control, labeled container.
 
     No nearest-neighbor geometry or absolute indexes. The generated XPath keeps
@@ -113,11 +113,12 @@ def structural_button_locator(node, parents, visible, text_counts: Counter) -> s
         if current is not container or not 1 <= hops <= 6:
             continue
         anchor = f"//*[@text={xpath_literal(label.get('text'))}]"
-        return (
+        locator = (
             f"{anchor}[count({anchor})=1]" + "/parent::*" * hops
             + "[count(.//*[@clickable='true'])=1]"
             + "/*[@class='android.widget.Button' and @clickable='true' and @enabled='true']"
         )
+        return locator, text
     return None
 
 

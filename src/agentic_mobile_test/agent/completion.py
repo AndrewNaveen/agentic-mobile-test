@@ -32,3 +32,16 @@ def validate_completion(value, screen_count):
     if value["decision"] != "complete" and not gaps:
         raise PlannerResponseError("Incomplete review must explain missing evidence or guidance")
     return value
+
+
+def has_reviewed_action_evidence(attempts, reviews, evidence_screens):
+    """Require a cited screen pair from an action referenced by a recorded review."""
+    reviewed_steps = {step for review in reviews for step in review["evidence_steps"]}
+    cited_screens = set(evidence_screens)
+    return any(
+        attempt["step"] in reviewed_steps
+        and attempt["execution_status"] == "returned"
+        and attempt["before_screen"] in cited_screens
+        and attempt.get("after_screen") in cited_screens
+        for attempt in attempts
+    )

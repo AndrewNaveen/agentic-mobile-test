@@ -110,7 +110,10 @@ open -e runs/app/home-assistant/brief.json
 
 **Edit and save `runs/app/home-assistant/brief.json`.** The template already
 contains the app identifiers and an objective for one demo player's play/pause
-controls. Review and edit it for your investigation.
+controls. Its tap permissions cover the Living Room card and the Play and Pause
+buttons. If you already have a working brief from before tap permissions were
+added, copy the `allowed_tap_targets` field from
+[the playback template](app/homeassistant/media-player.json) into that file.
 
 <details>
 <summary>Home Assistant — explore sliders instead</summary>
@@ -149,7 +152,7 @@ and `objective` for your app.
 ### Before saving your brief
 
 1. Name the investigation with `investigation_slug`.
-2. Review `objective`, `boundaries`, `cleanup` and `max_steps`. Enable `allow_toggle_changes` only if your objective permits toggle controls.
+2. Review `objective`, `boundaries`, `cleanup` and `max_steps`. List the permitted controls in `allowed_tap_targets` and enable `allow_toggle_changes` only if your objective permits toggle controls.
 3. Confirm the selected account, server and devices are isolated and safe to modify, then set `sandbox_confirmed` to `true` and save.
 
 [Brief field details](exploration/briefs.md#brief-fields) explain the available settings.
@@ -225,11 +228,15 @@ same folder** first: it contains findings, evidence and unresolved questions.
 Each execution saves a new folder under
 `runs/apps/<app_slug>/<investigation_slug>/<run-id>/`.
 
-- **`completed`** means the model's final review accepted the investigation evidence. Review it before deciding what to test.
+- **`completed`** means the model's final review accepted the evidence and the brief's evidence requirement was met. For a behavior brief, look for the reviewed action and its cited before/after screens.
 - **`blocked`, `needs_guidance`, `budget_exhausted`, `review_unavailable`** mean a partial investigation; pytest skips and records the reason.
 - **`error`** means an execution error; pytest fails. Inspect the saved attempts and evidence.
 
-Restore the original app state using your brief's `cleanup` instructions.
+If the foreground package changes, the explorer stops and saves the capture
+locally. It skips the final Gemini review of that run.
+
+After pytest exits, restore the original app state using your brief's `cleanup`
+instructions. The completion review assesses the investigation objective.
 For individual output files, see [Working briefs and results](../runs/README.md).
 
 For another objective, create a different brief file in step 5 and give it a new

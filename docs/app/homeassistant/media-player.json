@@ -1,7 +1,7 @@
 {
   "app_slug": "home-assistant",
   "investigation_slug": "playback-controls",
-  "objective": "Find one demo media player. Investigate its playback controls, propose one high-level test scenario and a candidate acceptance criterion, exercise that behavior, and review the evidence. Distinguish observed UI behavior from assumptions about intended behavior or real audio playback.",
+  "objective": "Find the Living Room demo player. Investigate its playback controls, propose one high-level test scenario and a candidate acceptance criterion, exercise that behavior, and review the evidence. Distinguish observed UI behavior from assumptions about intended behavior or real audio playback.",
   "app_package": "io.homeassistant.companion.android",
   "boundaries": [
     "Use only the isolated Home Assistant demo server and its simulated players",
@@ -9,8 +9,13 @@
     "Do not change volume, account settings, server configuration, or operate real devices",
     "Request guidance when unsure whether a control is within these permissions"
   ],
-  "cleanup": "Manually restore the chosen demo player's original playback state and return to Overview; consult the initial evidence",
+  "cleanup": "After pytest exits, manually restore the chosen demo player's original playback state and return to Overview. Consult the initial evidence.",
   "sandbox_confirmed": false,
   "max_steps": 15,
-  "allow_toggle_changes": true
+  "allow_toggle_changes": true,
+  "allowed_tap_targets": {
+    "card_label": ["Living Room", "Living RoomPlaying"],
+    "text": ["Play", "Pause"]
+  },
+  "require_action_evidence": true
 }

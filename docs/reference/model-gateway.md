@@ -27,6 +27,12 @@ or exhausts its budget.
 - Failed requests with unknown usage increment `unaccounted_calls`. Their possible charges are excluded from the estimate.
 - A gateway with unknown usage refuses further requests.
 
+The planner sends the current screen, the preceding distinct hierarchy when
+available, and a compact action trail. For Gemini 3 navigation requests it uses
+medium screenshot resolution in both token preflight and generation. Slider
+exploration and final review use the default resolution. Full evidence is saved
+locally and remains available to the final reviewer.
+
 Reports save exploration usage under `model_usage`, final review usage under
 `review_usage`, and the combined estimate under `total_estimated_cost_usd`.
 

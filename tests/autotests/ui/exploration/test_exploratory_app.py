@@ -1,12 +1,17 @@
 """Opt-in reconnaissance entry point, not a product regression test."""
 
-from pathlib import Path
-from decimal import Decimal
 import json
+from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
-from agentic_mobile_test.agent.exploration import ExplorationBrief, ExplorationLoop, ExplorationPlanner, create_run_directory
+from agentic_mobile_test.agent.exploration import (
+    ExplorationBrief,
+    ExplorationLoop,
+    ExplorationPlanner,
+    create_run_directory,
+)
 from agentic_mobile_test.appium.actions import AppiumActions
 from agentic_mobile_test.appium.executor import AppiumExecutor
 from agentic_mobile_test.appium.observer import AppiumObserver
@@ -58,6 +63,8 @@ def test_explore_app(exploration_input, request, runs_directory, capsys):
                     print(f"Review gap: {gap}")
             elif "error" in review:
                 print(f"Review unavailable: {review['error']}")
+            elif "reason" in review:
+                print(review["reason"])
         print(f"Manual cleanup required: {exploration_input.cleanup}")
     _report_exploration_outcome(result)
 

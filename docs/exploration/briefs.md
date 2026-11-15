@@ -14,13 +14,20 @@ Edit these fields, then save:
 - **`investigation_slug`**: a name for this objective, such as `playback-controls`. Use lowercase letters/numbers separated by single hyphens for both names, at most 80 characters.
 - **`app_package`**: the installed Android package, replacing `com.example.demo`.
 - **`objective`**: the behavior or question you want investigated. Describe the goal; the model chooses the navigation.
-- **`boundaries`**: a non-empty list of allowed resources/actions and forbidden changes.
+- **`boundaries`**: a non-empty list of allowed resources/actions and forbidden changes for the model to follow.
+- **`allowed_tap_targets`**: exact UI values the policy permits the model to tap. Use an object whose keys are `text`, `accessibility_id`, `resource_id` or `card_label`, with a nonempty array for each key you use. One matching field is enough. A missing field or empty object permits zero taps. `card_label` matches the text anchor the observer found for an unlabeled card with a single clickable button.
+- **`require_action_evidence`**: defaults to `true`. A behavior investigation needs a recorded review of a returned action, with the final review citing both its before and after screens. Set it to `false` for a screen-only inventory where observation alone fulfills the objective.
 - **`cleanup`**: how you will restore the original app state after the run.
 - **`max_steps`**: the model decision limit, from 1 to 50. Notes, rejected decisions and stopping decisions count too. The template uses 10.
 - **`allow_toggle_changes`**: leave `false` unless your investigation permits tapping controls recognized as toggles. Other taps can still change state.
 - **`sandbox_confirmed`**: set `true` after confirming the selected account, server and devices are isolated and safe to modify. It records your confirmation; it does not create or verify isolation. Keep it `false` when isolation is unknown or the resources are shared/production.
 
-The template starts unconfirmed. Prose boundaries do not enforce isolation.
+For example, `"allowed_tap_targets": {"text": ["Details"]}` permits a tap on a
+clickable, executable control with the exact text `Details`. Prefer a resource ID
+or accessibility ID when a visible label is shared by unrelated controls. For
+an older brief, add the permitted targets before rerunning. The template starts
+unconfirmed and requires an isolated environment.
+
 ## Explore sliders
 
 Exploration supports tap, scroll and Back by default. To experiment with sliders,

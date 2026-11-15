@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from math import isfinite
-from typing import Mapping, Protocol
+from typing import Protocol
 
-from ..contracts import ActionKind, Observation, PlannedAction, StepRecord
+from ..contracts import (
+    ActionKind,
+    Observation,
+    ObservedElement,
+    PlannedAction,
+    StepRecord,
+)
+
+TAP_TARGET_FIELDS = frozenset({"text", "accessibility_id", "resource_id", "card_label"})
 
 
 class ActionScope(Protocol):
@@ -14,12 +23,20 @@ class ActionScope(Protocol):
     max_steps: int
     allowed_actions: frozenset[ActionKind]
     allow_toggle_changes: bool
+    allowed_tap_targets: Mapping[str, tuple[str, ...]]
     test_data: Mapping[str, str]
     launchable_apps: Mapping[str, str]
 
 
 class PolicyViolation(ValueError):
     """A planned action is outside the approved scenario contract."""
+
+
+def matches_tap_target(scenario: ActionScope, target: ObservedElement) -> bool:
+    return any(
+        getattr(target, field) in values
+        for field, values in scenario.allowed_tap_targets.items()
+    )
 
 
 class ActionPolicy:
@@ -59,8 +76,11 @@ class ActionPolicy:
         elif action.target_ref is not None:
             raise PolicyViolation(f"{action.kind.value} cannot include target_ref")
 
-        if action.kind is ActionKind.TAP and target is not None and not target.clickable:
-            raise PolicyViolation(f"Target {action.target_ref} is not reported as clickable")
+        if action.kind is ActionKind.TAP and target is not None:
+            if not target.clickable:
+                raise PolicyViolation(f"Target {action.target_ref} is not reported as clickable")
+            if not matches_tap_target(scenario, target):
+                raise PolicyViolation(f"Target {action.target_ref} is outside the brief's allowed_tap_targets")
         if target is not None and target.is_slider and action.kind not in slider_actions:
             raise PolicyViolation("Use an explicitly permitted slider action for sliders")
         if action.kind is ActionKind.SET_SLIDER_VALUE:
